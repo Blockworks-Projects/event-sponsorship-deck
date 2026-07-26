@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "functions": {
+    "src/app/api/proposals/[slug]/pdf/route.ts": {
+      "memory": 3009,
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/sync",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
