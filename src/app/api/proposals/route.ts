@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { proposalColumns, replaceModules, picksFrom, type ProposalInput } from '@/lib/proposal-write';
 
 function slugify(company: string): string {
@@ -14,6 +15,13 @@ function slugify(company: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Checked before the body is even read: creating a proposal is a write, and
+  // the page it produces is public to whoever holds the link. PATCH on
+  // /api/proposals/[slug] has always done this; POST had not.
+  if (!readSessionToken(req.cookies.get(BUILDER_COOKIE_NAME)?.value ?? '')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const input = (await req.json()) as ProposalInput;
 
   const picks = picksFrom(input);

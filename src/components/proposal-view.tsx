@@ -23,6 +23,15 @@ const EVENT_NAME: Record<string, string> = {
   nyc: 'New York',
 };
 
+/** The live master deck in Drive. Used only in the PDF, where an in-page
+ * view can't work — see salesDeck() below. */
+const SALES_DECK_URL =
+  'https://docs.google.com/presentation/d/1oz8n6u5IgrWIuJng9bHADtU64973BCI3UYDHip78dv4/edit?usp=sharing';
+
+/** Covering both cities, neither city's page is right — the events index
+ * lists them both. */
+const ALL_EVENTS_SITE = 'https://blockworks.com/events';
+
 const EVENT_SITE: Record<string, string> = {
   london: 'https://blockworks.com/event/digital-asset-summit-london',
   asia: 'https://blockworks.com/event/digital-asset-summit-asia',
@@ -122,6 +131,20 @@ export function ProposalView({
       setSubmitting(false);
     }
   }
+
+  /** On the web this opens the deck inside the page. In the PDF that button
+   * would be dead, so it becomes a real link to the deck in Drive instead —
+   * same label either way. */
+  const salesDeck = (className: string, label: string) =>
+    skipGate ? (
+      <a href={SALES_DECK_URL} target="_blank" rel="noopener noreferrer" className={className}>
+        {label}
+      </a>
+    ) : (
+      <button onClick={() => setView('deck')} className={className}>
+        {label}
+      </button>
+    );
 
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
@@ -227,10 +250,10 @@ export function ProposalView({
             style={{ backgroundColor: accent }}>
             Your proposal
           </button>
-          <button onClick={() => setView('deck')}
-            className="border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white">
-            View sales deck
-          </button>
+          {salesDeck(
+            'border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white',
+            'View sales deck'
+          )}
         </div>
       </div>
     );
@@ -313,19 +336,17 @@ export function ProposalView({
           <div className="relative mx-auto w-full max-w-6xl px-10">
             <div className="flex gap-3">
               <a
-                href="https://blockworks.com/event/digital-asset-summit-london"
+                href={ALL_EVENTS_SITE}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
               >
                 Event website
               </a>
-              <button
-                onClick={() => setView('deck')}
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
-              >
-                Sales deck
-              </button>
+              {salesDeck(
+                'border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white',
+                'Sales deck'
+              )}
             </div>
 
             <h1 className="mt-16 max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight">
@@ -386,12 +407,10 @@ export function ProposalView({
               >
                 Event website
               </a>
-              <button
-                onClick={() => setView('deck')}
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
-              >
-                Sales deck
-              </button>
+              {salesDeck(
+                'border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white',
+                'Sales deck'
+              )}
             </div>
 
             <dl className="mt-14 flex flex-wrap items-start justify-center gap-x-14 gap-y-8">
