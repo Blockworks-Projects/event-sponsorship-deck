@@ -74,12 +74,6 @@ export default async function ProposalPage({
           <Link href="/builder" className="px-3 py-1.5 hover:text-white">
             All proposals
           </Link>
-          <Link
-            href={`/builder/proposal/${slug}/edit`}
-            className="bg-neutral-100 px-3 py-1.5 font-semibold text-neutral-900 hover:bg-white"
-          >
-            Edit
-          </Link>
         </div>
       )}
       <ProposalView

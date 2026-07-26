@@ -18,7 +18,7 @@ function baseUrl(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { email } = (await req.json()) as { email?: string };
+  const { email, password } = (await req.json()) as { email?: string; password?: string };
   const address = (email ?? '').trim().toLowerCase();
 
   if (!isAllowedEmail(address)) {
@@ -26,6 +26,32 @@ export async function POST(req: NextRequest) {
       { error: 'Use your Blockworks email address.' },
       { status: 400 }
     );
+  }
+
+  // The team password: same session as the emailed link, just without the
+  // round trip through an inbox. The Blockworks-domain check above still
+  // applies, so the password alone is not enough.
+  if (password) {
+    const expected = process.env.BUILDER_PASSWORD;
+    if (!expected) {
+      return NextResponse.json(
+        { error: 'Password sign-in is not configured (BUILDER_PASSWORD).' },
+        { status: 500 }
+      );
+    }
+    if (password !== expected) {
+      return NextResponse.json({ error: 'That password is not right.' }, { status: 401 });
+    }
+
+    const response = NextResponse.json({ signedIn: true });
+    response.cookies.set(BUILDER_COOKIE_NAME, createSessionToken(address), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+    return response;
   }
 
   const link = `${baseUrl(req)}/api/auth?token=${encodeURIComponent(createSignInToken(address))}`;

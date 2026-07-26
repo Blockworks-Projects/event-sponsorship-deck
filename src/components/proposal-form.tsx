@@ -411,10 +411,7 @@ export function ProposalForm({
       </ol>
 
       {step === 0 && (
-        <StepPanel
-          title="What are you selling?"
-          hint="Narrows what you pick from next. Doesn't limit the proposal itself."
-        >
+        <StepPanel title="What are you selling?">
           <Fieldset label="Event">
             <div className="flex flex-wrap gap-2">
               {[...EVENTS, { key: 'both', label: 'Both' }].map((e) => (
@@ -567,10 +564,7 @@ export function ProposalForm({
       )}
 
       {step === 2 && contentOffered && (
-        <StepPanel
-          title="Content session"
-          hint="Optional — only if a session has been agreed."
-        >
+        <StepPanel title="Content session" hint="Optional">
           {sessionEvents.map((key) => {
             const label = EVENTS.find((e) => e.key === key)?.label ?? key;
             const draft = draftFor(key);

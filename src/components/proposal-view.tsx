@@ -149,11 +149,13 @@ export function ProposalView({
           )
         )}
 
-        <div className="relative w-full max-w-md text-center">
+        <div className="relative w-full max-w-xl text-center">
           {gateBothEvents ? (
             <>
-              <h1 className="text-4xl font-bold leading-[1.05] tracking-tight">
-                Digital Asset Summit <span className="whitespace-nowrap">(DAS)</span>
+              {/* One line at any width: the type scales with the viewport
+                  rather than wrapping, which broke the lockup in half. */}
+              <h1 className="whitespace-nowrap text-[clamp(1.5rem,5.2vw,2.5rem)] font-bold leading-[1.05] tracking-tight">
+                Digital Asset Summit (DAS)
               </h1>
               <p className="mt-2 text-3xl tracking-tight text-neutral-700">Partnership Proposal</p>
             </>
@@ -167,9 +169,7 @@ export function ProposalView({
           )}
 
           <p className="mt-6 text-pretty leading-relaxed text-neutral-600">
-            Prepared for{' '}
-            <strong className="font-semibold text-neutral-900">{proposal.company}</strong>. Enter
-            the email address this proposal was sent to.
+            Enter the email address this proposal was sent to.
           </p>
 
           <form onSubmit={handleGate} className="mx-auto mt-8 flex max-w-sm flex-col gap-3">

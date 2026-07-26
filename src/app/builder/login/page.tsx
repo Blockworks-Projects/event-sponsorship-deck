@@ -17,10 +17,12 @@ export default function BuilderLoginPage() {
 function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(searchParams.get('error'));
   const [loading, setLoading] = useState(false);
 
+  /** A password signs you straight in; without one, a link goes to the inbox. */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -30,10 +32,16 @@ function LoginForm() {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(password ? { email, password } : { email }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Something went wrong.');
+      // A full navigation, not router.push: the session cookie was just set
+      // on this response, and the proxy needs to see it on the next request.
+      if (body.signedIn) {
+        window.location.href = searchParams.get('next') || '/builder';
+        return;
+      }
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -69,7 +77,7 @@ function LoginForm() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-50">Proposal Builder</h1>
           <p className="mt-1 text-sm text-neutral-400">
-            Sign in with your Blockworks email. No password — we&apos;ll send you a link.
+            Sign in with your Blockworks email.
           </p>
         </div>
         <div className="space-y-2">
@@ -83,9 +91,20 @@ function LoginForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder="Optional"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <Button type="submit" disabled={loading} className="w-full">
-          {loading ? 'Sending…' : 'Email me a link'}
+          {loading ? (password ? 'Signing in…' : 'Sending…') : password ? 'Sign in' : 'Email me a link'}
         </Button>
       </form>
     </div>
