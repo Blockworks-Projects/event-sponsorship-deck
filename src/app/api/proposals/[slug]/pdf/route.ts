@@ -11,7 +11,7 @@ const PAGE_WIDTH = 1240;
 const PAGE_HEIGHT = 1754;
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /** Dev-only: the usual install locations for a real Chrome, by platform. */
 function localChromePath(): string {
@@ -34,11 +34,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   // Locally, fall back to whatever Chrome is already installed so the PDF
   // path is testable off-Vercel too.
   const onVercel = !!process.env.VERCEL;
-  const browser = await puppeteer.launch(
-    onVercel
-      ? { args: chromium.args, executablePath: await chromium.executablePath(), headless: true }
-      : { executablePath: localChromePath(), headless: true }
-  );
+
+  let browser;
+  try {
+    browser = await puppeteer.launch(
+      onVercel
+        ? { args: chromium.args, executablePath: await chromium.executablePath(), headless: true }
+        : { executablePath: localChromePath(), headless: true }
+    );
+  } catch (err) {
+    // Without this the route throws and Vercel returns a bare 500 with no
+    // body, which says nothing about which of Chrome's many launch failures
+    // it was.
+    return NextResponse.json(
+      { error: `Could not start Chrome: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 }
+    );
+  }
 
   try {
     const page = await browser.newPage();
@@ -64,6 +76,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         'Content-Disposition': `attachment; filename="${slug}.pdf"`,
       },
     });
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Could not render the PDF: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 }
+    );
   } finally {
     await browser.close();
   }

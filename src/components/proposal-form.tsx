@@ -187,7 +187,7 @@ export function ProposalForm({
     ? Object.keys(tierTable.pricing).map((t) => t.charAt(0).toUpperCase() + t.slice(1))
     : [];
   const bothEvents = event === 'both';
-  const sessionEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
+  const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
 
   /** The standard price for a tier at one event, from that event's table. */
   const priceFor = (eventKey: string, tier: string) => {
@@ -237,6 +237,24 @@ export function ProposalForm({
     if (!value || /^[–—-]$/.test(value)) return '';
     return /main stage/i.test(value) ? 'main' : 'track';
   };
+
+  /** Only the events whose chosen tier includes a speaking slot — in practice
+   * Presenting and Diamond. Everything else skips the content step.
+   *
+   * Until a tier is picked the step stays available: the tier can also be set
+   * on the last step, which comes after this one, and hiding it on "not yet
+   * decided" would take the option away before the rep had made the choice. */
+  const tierAt = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
+  const sessionEvents = scopedEvents.filter(
+    (key) => !tierAt(key) || stageFor(key) !== ''
+  );
+  const contentOffered = sessionEvents.length > 0;
+
+  // Changing the tier while standing on the content step would otherwise
+  // leave the rep on a step that no longer renders anything.
+  useEffect(() => {
+    if (step === 2 && !contentOffered) setStep(3);
+  }, [step, contentOffered]);
 
   /**
    * Loads each event's agenda as soon as a session is wanted there, rather
@@ -320,6 +338,11 @@ export function ProposalForm({
     // Autofill has put a rep's own address in here before now.
     if (/@/.test(company)) return setError('Company looks like an email address — check the field.');
     if (!cart.length) return setError('Add at least one activation.');
+    // Required, because it's now the key: the proposal page only opens for
+    // this address. A blank one would leave the link open to anyone.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
+      return setError('A contact email is required. It is the address that unlocks the proposal.');
+    }
 
     setSubmitting(true);
     try {
@@ -370,7 +393,7 @@ export function ProposalForm({
     <div>
       <ol className="mb-8 flex flex-wrap gap-2">
         {STEPS.map((name, i) => (
-          <li key={name}>
+          <li key={name} className={i === 2 && !contentOffered ? 'hidden' : undefined}>
             {/* Steps are navigable, not locked: changing the scope after
                 picking shouldn't mean starting again. */}
             <button
@@ -536,12 +559,14 @@ export function ProposalForm({
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
-            <Button onClick={() => setStep(2)}>Content session</Button>
+            <Button onClick={() => setStep(contentOffered ? 2 : 3)}>
+              {contentOffered ? 'Content session' : 'Sponsor details'}
+            </Button>
           </div>
         </StepPanel>
       )}
 
-      {step === 2 && (
+      {step === 2 && contentOffered && (
         <StepPanel
           title="Content session"
           hint="Optional — only if a session has been agreed."
@@ -705,7 +730,10 @@ export function ProposalForm({
                   onChange={(e) => setContactName(e.target.value)}
                 />
               </Fieldset>
-              <Fieldset label="Contact email">
+              <Fieldset
+                label="Contact email"
+                hint="The proposal page only opens for this address."
+              >
                 <Input
                   name="sponsor-contact-email"
                   type="email"
@@ -962,7 +990,7 @@ export function ProposalForm({
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(2)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(contentOffered ? 2 : 1)}>Back</Button>
             <Button disabled={submitting} onClick={generate}>
               {submitting ? 'Saving…' : editing ? 'Save changes' : 'Generate proposal'}
             </Button>

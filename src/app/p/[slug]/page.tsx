@@ -1,5 +1,8 @@
+import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { ProposalView } from '@/components/proposal-view';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
@@ -14,6 +17,13 @@ export default async function ProposalPage({
 }) {
   const { slug } = await params;
   const { print } = await searchParams;
+
+  // A signed-in Blockworks rep previewing their own work gets a way back to
+  // the builder. A sponsor has no cookie, so they never see it — and it isn't
+  // in the PDF either, which renders with print=1.
+  const isTeam =
+    print !== '1' &&
+    !!readSessionToken((await cookies()).get(BUILDER_COOKIE_NAME)?.value ?? '');
 
   const { data: proposal } = await supabase
     .from('proposals')
@@ -56,13 +66,30 @@ export default async function ProposalPage({
     .order('page_index', { ascending: true });
 
   return (
-    <ProposalView
-      proposal={proposal as Proposal}
-      deckPages={(deckPages ?? []).map((p) => p.image_url)}
-      modules={modules}
-      tierTable={tierTable}
-      tierTables={(tierTables ?? []) as SponsorshipModule[]}
-      skipGate={print === '1'}
-    />
+    <>
+      {isTeam && (
+        // Fixed, so it survives the view's own switching between gate, deck
+        // and proposal without being threaded through each of them.
+        <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 border border-neutral-800 bg-neutral-950 p-1 text-sm text-neutral-300 shadow-lg print:hidden">
+          <Link href="/builder" className="px-3 py-1.5 hover:text-white">
+            All proposals
+          </Link>
+          <Link
+            href={`/builder/proposal/${slug}/edit`}
+            className="bg-neutral-100 px-3 py-1.5 font-semibold text-neutral-900 hover:bg-white"
+          >
+            Edit
+          </Link>
+        </div>
+      )}
+      <ProposalView
+        proposal={proposal as Proposal}
+        deckPages={(deckPages ?? []).map((p) => p.image_url)}
+        modules={modules}
+        tierTable={tierTable}
+        tierTables={(tierTables ?? []) as SponsorshipModule[]}
+        skipGate={print === '1'}
+      />
+    </>
   );
 }

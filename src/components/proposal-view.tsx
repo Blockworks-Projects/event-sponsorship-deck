@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModuleCard } from '@/components/module-card';
 import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
@@ -90,8 +89,6 @@ export function ProposalView({
   const [view, setView] = useState<'choose' | 'proposal' | 'deck'>(
     skipGate ? 'proposal' : 'choose'
   );
-  const [name, setName] = useState('');
-  const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -111,8 +108,6 @@ export function ProposalView({
         body: JSON.stringify({
           deckType: 'proposal',
           proposalId: proposal.id,
-          viewerName: name,
-          viewerCompany: company,
           viewerEmail: email,
         }),
       });
@@ -128,22 +123,75 @@ export function ProposalView({
     }
   }
 
+  const gateBothEvents = proposal.event === 'both';
+  const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
+  const gateAccent = gateBothEvents
+    ? 'var(--das-ink)'
+    : (proposal.event && EVENT_ACCENT[proposal.event]) || 'var(--das-london)';
+
   if (!unlocked) {
+    // Same furniture as the proposal's own cover — light ground, drifting
+    // shapes, the wordmark — so the first screen a sponsor sees already looks
+    // like DAS rather than a login form.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
-        <form onSubmit={handleGate} className="w-full max-w-sm space-y-4">
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-50">A partnership proposal for {proposal.company}</h1>
-            <p className="mt-1 text-sm text-neutral-400">Enter your details to view it.</p>
-          </div>
-          <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Company" value={company} onChange={(e) => setCompany(e.target.value)} />
-          <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <Button type="submit" disabled={submitting} className="w-full">
-            {submitting ? 'Loading…' : 'Continue'}
-          </Button>
-        </form>
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafafa] px-6 text-neutral-900">
+        {gateBothEvents ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/brand/shapes-both.svg" alt="" aria-hidden className="hero-shape hero-shape-both" />
+        ) : (
+          gateShapes && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={gateShapes.left} alt="" aria-hidden className="hero-shape hero-shape-left" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={gateShapes.right} alt="" aria-hidden className="hero-shape hero-shape-right" />
+            </>
+          )
+        )}
+
+        <div className="relative w-full max-w-md text-center">
+          {gateBothEvents ? (
+            <>
+              <h1 className="text-4xl font-bold leading-[1.05] tracking-tight">
+                Digital Asset Summit <span className="whitespace-nowrap">(DAS)</span>
+              </h1>
+              <p className="mt-2 text-3xl tracking-tight text-neutral-700">Partnership Proposal</p>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-center">
+                <DasWordmark event={proposal.event} accent={gateAccent} />
+              </div>
+              <h1 className="mt-8 text-3xl font-bold tracking-tight">Partnership Proposal</h1>
+            </>
+          )}
+
+          <p className="mt-6 text-pretty leading-relaxed text-neutral-600">
+            Prepared for{' '}
+            <strong className="font-semibold text-neutral-900">{proposal.company}</strong>. Enter
+            the email address this proposal was sent to.
+          </p>
+
+          <form onSubmit={handleGate} className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
+            <Input
+              placeholder="Email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-12 rounded-none border-neutral-300 bg-white text-center text-neutral-900"
+            />
+            {error && <p className="text-sm" style={{ color: 'var(--das-asia)' }}>{error}</p>}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-8 py-4 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ backgroundColor: gateAccent }}
+            >
+              {submitting ? 'Loading…' : 'View proposal'}
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
@@ -151,10 +199,7 @@ export function ProposalView({
   const facts = proposal.event ? EVENT_FACTS[proposal.event] : undefined;
   // A section spanning both cities can't take either city's colour, so it's
   // set in the brand's near-black. Per-event sections keep their own.
-  const accent =
-    proposal.event === 'both'
-      ? 'var(--das-ink)'
-      : (proposal.event && EVENT_ACCENT[proposal.event]) || 'var(--das-london)';
+  const accent = gateAccent;
   // Browsing the deck is a permanent part of the experience, so the button is
   // always there. Our own rendered pages are preferred; the embed is the
   // fallback for before a sync has run.
@@ -231,10 +276,10 @@ export function ProposalView({
   const context = modules.filter((m) => m.category !== 'activation');
   const activations = modules.filter((m) => m.category === 'activation');
   const price = proposal.discounted_price || proposal.list_price;
-  const shapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
+  const shapes = gateShapes;
   // Across two cities, which activation belongs to which is the one thing a
   // sponsor can't infer, so the availability badges come back.
-  const bothEvents = proposal.event === 'both';
+  const bothEvents = gateBothEvents;
   // Chronological: Asia is October, London is November. Not alphabetical, and
   // not whatever order the tiers happen to be stored in.
   const EVENTS_IN_ORDER = ['asia', 'london'];

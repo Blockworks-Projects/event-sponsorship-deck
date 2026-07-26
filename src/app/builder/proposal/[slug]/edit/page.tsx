@@ -31,7 +31,7 @@ export default async function EditProposalPage({
     .order('sort_order', { ascending: true });
 
   return (
-    <div className="min-h-screen bg-neutral-950 px-6 py-10 text-neutral-50">
+    <div className="px-6 py-10 text-neutral-50">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Link

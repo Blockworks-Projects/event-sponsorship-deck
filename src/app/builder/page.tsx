@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
-import { SignOutButton } from '@/components/sign-out-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +26,7 @@ export default async function BuilderHomePage() {
     .limit(100);
 
   return (
-    <div className="min-h-screen bg-neutral-950 px-6 py-10 text-neutral-50">
+    <div className="px-6 py-10 text-neutral-50">
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -35,7 +34,6 @@ export default async function BuilderHomePage() {
             {email && <p className="mt-1 text-sm text-neutral-400">Signed in as {email}</p>}
           </div>
           <div className="flex items-center gap-3">
-            <SignOutButton />
             <Link
               href="/builder/new"
               className="bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"

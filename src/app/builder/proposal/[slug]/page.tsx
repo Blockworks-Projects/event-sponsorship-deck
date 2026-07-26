@@ -1,10 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { GenerateSlidesButton } from '@/components/generate-slides-button';
 import type { SponsorshipModule } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+
+const EVENT_LABEL: Record<string, string> = {
+  london: 'London',
+  asia: 'Asia',
+  nyc: 'New York',
+  both: 'London + Asia',
+};
 
 export default async function BuilderProposalPage({
   params,
@@ -36,14 +42,11 @@ export default async function BuilderProposalPage({
       <div className="mx-auto max-w-3xl space-y-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Link href="/builder/new" className="text-sm text-neutral-400 underline">
-              ← New proposal
-            </Link>
-            <h1 className="mt-3 text-2xl font-semibold">{proposal.company}</h1>
+            <h1 className="text-2xl font-semibold">{proposal.company}</h1>
             <p className="mt-1 text-sm text-neutral-400">
               {modules.length} item{modules.length === 1 ? '' : 's'}
               {proposal.total_price ? ` · ${proposal.total_price}` : ''}
-              {proposal.event ? ` · ${proposal.event}` : ''}
+              {proposal.event ? ` · ${EVENT_LABEL[proposal.event] ?? proposal.event}` : ''}
             </p>
           </div>
           <Link
@@ -72,13 +75,19 @@ export default async function BuilderProposalPage({
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Google Slides version
+            PDF
           </h2>
           <p className="mt-2 text-sm text-neutral-300">
-            Builds a real deck from the template, filled with these same items, for when you want
-            to hand-edit it or send a file.
+            The same proposal as a file, for attaching to an email.
           </p>
-          <GenerateSlidesButton slug={proposal.slug} />
+          {/* A plain link, not fetch(): the browser handles the download and
+              the wait, and headless Chrome takes a few seconds to render. */}
+          <a
+            href={`/api/proposals/${proposal.slug}/pdf`}
+            className="mt-3 inline-block bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
+          >
+            Download PDF
+          </a>
         </section>
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
