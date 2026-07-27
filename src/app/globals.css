@@ -155,6 +155,14 @@
    own. */
 @page {
   size: 1240px 1754px;
+  /* Vertical breathing room so text never butts against the paper edge.
+     Horizontal padding comes from the layout's own column. */
+  margin: 64px 0;
+}
+
+/* The cover is full-bleed artwork, so it gets its own page with no margin.
+   Named pages, so one rule doesn't have to serve both. */
+@page cover {
   margin: 0;
 }
 
@@ -164,6 +172,11 @@
     display: none !important;
   }
   .pdf-block {
+    break-inside: avoid;
+  }
+  /* A tier row split across two pages leaves half a sentence on each. */
+  .benefit,
+  tr {
     break-inside: avoid;
   }
   /* A section label stranded at the foot of a page reads as a mistake. */
@@ -176,6 +189,7 @@
   /* The cover is its own page: sized to fill one, so what follows starts
      cleanly at the top of the next rather than after half a page of white. */
   .pdf-cover {
+    page: cover;
     min-height: 0;
     height: 1754px;
     box-sizing: border-box;

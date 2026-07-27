@@ -65,7 +65,11 @@ async function launch(keepSingleProcess: boolean): Promise<Browser> {
 }
 
 /** One render attempt, browser included, so a retry starts genuinely clean. */
-async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Uint8Array> {
+async function render(
+  targetUrl: string,
+  keepSingleProcess: boolean,
+  pageRanges?: string
+): Promise<Uint8Array> {
   const browser = await launch(keepSingleProcess);
   try {
     const page = await browser.newPage();
@@ -109,6 +113,9 @@ async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Ui
     return await page.pdf({
       preferCSSPageSize: true,
       printBackground: true,
+      // ?page=2 renders that page alone. Only useful when checking how the
+      // document breaks; the sponsor-facing path never sets it.
+      ...(pageRanges ? { pageRanges } : {}),
       timeout: 45_000,
     });
   } finally {
@@ -135,6 +142,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
   // Keyed on updated_at, so editing a proposal produces a new key and the
   // next download re-renders. No cache to invalidate by hand.
+  const pageRanges = req.nextUrl.searchParams.get('page') ?? undefined;
+
   const { data: proposal } = await supabase
     .from('proposals')
     .select('updated_at')
@@ -144,7 +153,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     ? `${slug}/${new Date(proposal.updated_at).getTime()}.pdf`
     : null;
 
-  if (cacheKey) {
+  if (cacheKey && !pageRanges) {
     const { data: cached } = await supabase.storage.from(PDF_BUCKET).download(cacheKey);
     if (cached) {
       return pdfResponse(new Uint8Array(await cached.arrayBuffer()), slug, true);
@@ -161,11 +170,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       // Second pass restores --single-process, so if dropping it ever stops
       // Chrome starting at all on some future runtime, the retry recovers
       // instead of repeating the same failure.
-      const pdf = await render(targetUrl, attempt === 1);
+      const pdf = await render(targetUrl, attempt === 1, pageRanges);
 
       // Stored before returning, but never at the cost of the download: if
       // the upload fails the sponsor still gets their file.
-      if (cacheKey) {
+      if (cacheKey && !pageRanges) {
         const { data: buckets } = await supabase.storage.listBuckets();
         if (!buckets?.some((b) => b.name === PDF_BUCKET)) {
           await supabase.storage.createBucket(PDF_BUCKET, { public: false });
