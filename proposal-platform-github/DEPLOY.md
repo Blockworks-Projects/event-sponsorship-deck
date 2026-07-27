@@ -59,9 +59,10 @@ to a custom domain** — otherwise sign-in emails keep linking to the old addres
 - `/builder` → the list of proposals
 - Open any proposal's tracked link and download its PDF
 
-The PDF route runs headless Chrome, which needs more than the default memory.
-If it times out: Settings → Functions → raise the memory for
-`/api/proposals/[slug]/pdf`.
+The PDF route runs headless Chrome. On Fluid compute (Active CPU billing) a
+`memory` setting in `vercel.json` is ignored — sizing comes from the project's
+compute settings — so don't add one back. If renders fail, the route reports
+the real Chrome error in its JSON response; read that before changing config.
 
 ## 5. A custom domain, when you have one
 

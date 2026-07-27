@@ -4,7 +4,6 @@
   "buildCommand": "next build",
   "functions": {
     "src/app/api/proposals/[slug]/pdf/route.ts": {
-      "memory": 3009,
       "maxDuration": 60
     }
   },

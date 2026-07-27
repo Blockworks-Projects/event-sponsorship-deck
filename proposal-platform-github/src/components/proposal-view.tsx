@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { ModuleCard } from '@/components/module-card';
 import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
 import { TierGrid } from '@/components/tier-grid';
 import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
+import { KIOSK } from '@/lib/kiosk';
+import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
@@ -22,6 +24,15 @@ const EVENT_NAME: Record<string, string> = {
   asia: 'Asia',
   nyc: 'New York',
 };
+
+/** The live master deck in Drive. Used only in the PDF, where an in-page
+ * view can't work — see salesDeck() below. */
+const SALES_DECK_URL =
+  'https://docs.google.com/presentation/d/1oz8n6u5IgrWIuJng9bHADtU64973BCI3UYDHip78dv4/edit?usp=sharing';
+
+/** Covering both cities, neither city's page is right — the events index
+ * lists them both. */
+const ALL_EVENTS_SITE = 'https://blockworks.com/events';
 
 const EVENT_SITE: Record<string, string> = {
   london: 'https://blockworks.com/event/digital-asset-summit-london',
@@ -62,8 +73,8 @@ function nameFromEmail(email: string): string {
 function HeroStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div>
-      <dd className="text-xl font-bold" style={accent ? { color: accent } : undefined}>{value}</dd>
-      <dt className="mt-1 text-xs uppercase tracking-widest text-neutral-400">{label}</dt>
+      <dd className="text-2xl font-bold" style={accent ? { color: accent } : undefined}>{value}</dd>
+      <dt className="mt-1.5 text-sm uppercase tracking-widest text-neutral-400">{label}</dt>
     </div>
   );
 }
@@ -75,6 +86,7 @@ export function ProposalView({
   tierTables = [],
   deckPages = [],
   skipGate,
+  autoPrint,
 }: {
   proposal: Proposal;
   modules: (SponsorshipModule & { pickedFor?: string | null })[];
@@ -82,6 +94,8 @@ export function ProposalView({
   tierTables?: SponsorshipModule[];
   deckPages?: string[];
   skipGate?: boolean;
+  /** Opened from the builder to print: raise the dialog on arrival. */
+  autoPrint?: boolean;
 }) {
   const [unlocked, setUnlocked] = useState(!!skipGate);
   // After the gate a viewer picks a destination: their own proposal, or the
@@ -92,6 +106,20 @@ export function ProposalView({
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // The rep clicked "Save as PDF" in the builder, which opens this page in a
+  // new tab. Waiting for load means images and webfonts are in before the
+  // dialog freezes the page.
+  useEffect(() => {
+    if (!autoPrint) return;
+    const raise = () => window.print();
+    if (document.readyState === 'complete') {
+      const id = window.setTimeout(raise, 300);
+      return () => window.clearTimeout(id);
+    }
+    window.addEventListener('load', raise);
+    return () => window.removeEventListener('load', raise);
+  }, [autoPrint]);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();
@@ -123,6 +151,30 @@ export function ProposalView({
     }
   }
 
+  /** On the web this opens the deck inside the page. In the PDF that button
+   * would be dead, so it becomes a real link to the deck in Drive instead —
+   * same label either way. */
+  const salesDeck = (className: string, label: string) =>
+    skipGate ? (
+      <a href={SALES_DECK_URL} target="_blank" rel="noopener noreferrer" className={className}>
+        {label}
+      </a>
+    ) : (
+      <button onClick={() => setView('deck')} className={className}>
+        {label}
+      </button>
+    );
+
+  // The kiosk is a London offer — Asia's tiers don't include one — so an
+  // Asia-only proposal never shows this section. Unset means yes: it's the
+  // default in the builder, and proposals made before the toggle existed all
+  // included one.
+  const londonInScope = proposal.event === 'london' || proposal.event === 'both';
+  // Kiosk or nothing: turning it off simply drops the section.
+  const showKiosk = londonInScope && proposal.include_kiosk !== false;
+  const kioskAccent = EVENT_ACCENT.london;
+
+
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
   const gateAccent = gateBothEvents
@@ -149,11 +201,13 @@ export function ProposalView({
           )
         )}
 
-        <div className="relative w-full max-w-md text-center">
+        <div className="relative w-full max-w-xl text-center">
           {gateBothEvents ? (
             <>
-              <h1 className="text-4xl font-bold leading-[1.05] tracking-tight">
-                Digital Asset Summit <span className="whitespace-nowrap">(DAS)</span>
+              {/* One line at any width: the type scales with the viewport
+                  rather than wrapping, which broke the lockup in half. */}
+              <h1 className="whitespace-nowrap text-[clamp(1.5rem,5.2vw,2.5rem)] font-bold leading-[1.05] tracking-tight">
+                Digital Asset Summit (DAS)
               </h1>
               <p className="mt-2 text-3xl tracking-tight text-neutral-700">Partnership Proposal</p>
             </>
@@ -162,14 +216,14 @@ export function ProposalView({
               <div className="flex justify-center">
                 <DasWordmark event={proposal.event} accent={gateAccent} />
               </div>
-              <h1 className="mt-8 text-3xl font-bold tracking-tight">Partnership Proposal</h1>
+              <h1 className="mt-10 text-4xl font-bold tracking-tight sm:text-5xl">
+              Partnership Proposal
+            </h1>
             </>
           )}
 
           <p className="mt-6 text-pretty leading-relaxed text-neutral-600">
-            Prepared for{' '}
-            <strong className="font-semibold text-neutral-900">{proposal.company}</strong>. Enter
-            the email address this proposal was sent to.
+            Enter the email address this proposal was sent to.
           </p>
 
           <form onSubmit={handleGate} className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
@@ -227,10 +281,10 @@ export function ProposalView({
             style={{ backgroundColor: accent }}>
             Your proposal
           </button>
-          <button onClick={() => setView('deck')}
-            className="border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white">
-            View sales deck
-          </button>
+          {salesDeck(
+            'border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white',
+            'View sales deck'
+          )}
         </div>
       </div>
     );
@@ -285,6 +339,12 @@ export function ProposalView({
   const EVENTS_IN_ORDER = ['asia', 'london'];
   const sessions =
     proposal.content_sessions ?? (proposal.content_session ? [proposal.content_session] : []);
+  // On a both-events proposal each city's content session is rendered inside
+  // this section, so a proposal with a session but no activations still has
+  // something to show under the heading.
+  const hasPartnershipContent =
+    activations.length > 0 ||
+    (bothEvents && sessions.some((sn) => sn.event && EVENTS_IN_ORDER.includes(sn.event)));
 
   return (
     <div className="bg-[#fafafa] text-neutral-900">
@@ -313,19 +373,17 @@ export function ProposalView({
           <div className="relative mx-auto w-full max-w-6xl px-10">
             <div className="flex gap-3">
               <a
-                href="https://blockworks.com/event/digital-asset-summit-london"
+                href={ALL_EVENTS_SITE}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
               >
                 Event website
               </a>
-              <button
-                onClick={() => setView('deck')}
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
-              >
-                Sales deck
-              </button>
+              {salesDeck(
+                'border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white',
+                'Sales deck'
+              )}
             </div>
 
             <h1 className="mt-16 max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight">
@@ -372,29 +430,29 @@ export function ProposalView({
           </div>
         ) : (
           // One city: the portal's centred hero.
-          <div className="relative mx-auto flex w-full max-w-[880px] flex-col items-center text-center">
+          <div className="relative mx-auto flex w-full max-w-[1040px] flex-col items-center text-center">
             <DasWordmark event={proposal.event} accent={accent} />
 
-            <h1 className="mt-8 text-3xl font-bold tracking-tight">Partnership Proposal</h1>
+            <h1 className="mt-10 text-4xl font-bold tracking-tight sm:text-5xl">
+              Partnership Proposal
+            </h1>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <div className="mt-10 flex flex-wrap justify-center gap-3">
               <a
                 href={EVENT_SITE[(proposal.event || '').toLowerCase()] ?? 'https://blockworks.com/event'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
+                className="border border-neutral-300 px-6 py-3 text-base font-medium text-neutral-700 hover:bg-white"
               >
                 Event website
               </a>
-              <button
-                onClick={() => setView('deck')}
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
-              >
-                Sales deck
-              </button>
+              {salesDeck(
+                'border border-neutral-300 px-6 py-3 text-base font-medium text-neutral-700 hover:bg-white',
+                'Sales deck'
+              )}
             </div>
 
-            <dl className="mt-14 flex flex-wrap items-start justify-center gap-x-14 gap-y-8">
+            <dl className="mt-16 flex flex-wrap items-start justify-center gap-x-12 gap-y-10">
               {facts && (
                 <>
                   <HeroStat label="Dates" value={facts.dates} />
@@ -446,6 +504,7 @@ export function ProposalView({
                 lands after the pricing, where it can speak to the numbers. */}
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-neutral-700">
               We&apos;ve curated this proposal exclusively for{' '}
+              <strong className="font-semibold text-neutral-900">{proposal.company}</strong> at{' '}
               <strong className="font-semibold text-neutral-900">
                 Digital Asset Summit{' '}
                 {bothEvents ? 'London and Asia' : EVENT_NAME[(proposal.event || '').toLowerCase()] ?? ''}
@@ -469,6 +528,27 @@ export function ProposalView({
         <TierIncluded proposal={proposal} tierTable={tierTable} accent={accent} />
       )}
 
+      {/* Sits directly under the tier grid: it's usually a bonus thrown in on
+          top of the tier, so it reads as part of what they're getting. */}
+      {proposal.intro_note && (
+        <section className="pdf-block mx-auto max-w-6xl px-10 pb-4">
+          <div className="border-l-2 pl-6" style={{ borderColor: accent }}>
+            <p className="max-w-2xl text-lg leading-relaxed text-neutral-700">
+              {proposal.intro_note}
+            </p>
+            {proposal.created_by && (
+              <p className="mt-3 text-sm text-neutral-500">
+                {proposal.created_by_name || nameFromEmail(proposal.created_by)}, Blockworks
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* A Gold proposal can legitimately have no activations — the tier and
+          its kiosk are the offer — and a heading with nothing under it reads
+          as a page that failed to load. */}
+      {hasPartnershipContent && (
       <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">
         <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: accent }}>
           Your Partnership
@@ -524,6 +604,38 @@ export function ProposalView({
           )
         )}
       </section>
+      )}
+
+      {showKiosk && (
+        <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">
+          {/* Same treatment as "Your Partnership" above it: these are
+              sections of the offer, not of the event background. */}
+          <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: kioskAccent }}>
+            Your Kiosk
+          </h2>
+          <div className="mt-6 flex flex-wrap items-start gap-10 border border-neutral-200 bg-white p-8">
+            <div className="min-w-[260px] flex-1">
+              <h3 className="text-2xl font-bold tracking-tight">{KIOSK.title}</h3>
+              <ul className="mt-5 space-y-3">
+                {KIOSK.points.map((point) => (
+                  <li key={point} className="flex gap-3 text-pretty leading-relaxed text-neutral-700">
+                    <span aria-hidden style={{ color: kioskAccent }}>→</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {KIOSK.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={optimized(KIOSK.image, 384)}
+                alt="A branded kiosk with a screen, plinth and stool"
+                className="w-[200px] shrink-0 self-center"
+              />
+            )}
+          </div>
+        </section>
+      )}
 
       {/* On a both-events proposal these have already been rendered inside
           their city's group above. */}
@@ -539,23 +651,6 @@ export function ProposalView({
         ))}
 
       <PriceBreakdown proposal={proposal} accent={accent} />
-
-      {/* Optional and personal, sitting under the numbers so it can speak to
-          them — a note about what's flexible, or why this shape was chosen. */}
-      {proposal.intro_note && (
-        <section className="pdf-block mx-auto max-w-6xl px-10 pb-4">
-          <div className="border-l-2 pl-6" style={{ borderColor: accent }}>
-            <p className="max-w-2xl text-lg leading-relaxed text-neutral-700">
-              {proposal.intro_note}
-            </p>
-            {proposal.created_by && (
-              <p className="mt-3 text-sm text-neutral-500">
-                {proposal.created_by_name || nameFromEmail(proposal.created_by)}, Blockworks
-              </p>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* Close. The price lives in the tier block above. */}
       <section className="pdf-block mx-auto max-w-6xl px-10 pb-28 pt-8">
@@ -577,7 +672,7 @@ export function ProposalView({
           {proposal.created_by && (
             <div className="mt-10 text-sm">
               <div className="font-semibold uppercase tracking-widest text-neutral-400" style={{ fontSize: '0.7rem' }}>
-                Your contact
+                Your Contact
               </div>
               <div className="mt-1 text-neutral-900">{proposal.created_by_name || nameFromEmail(proposal.created_by)}</div>
               <a href={`mailto:${proposal.created_by}`} className="text-neutral-500 underline">
@@ -587,13 +682,13 @@ export function ProposalView({
           )}
 
           {!skipGate && (
-            <a
-              href={`/api/proposals/${proposal.slug}/pdf`}
-              className="mt-12 inline-block px-5 py-3 text-sm font-semibold text-white"
+            <button
+              onClick={() => window.print()}
+              className="print-hide mt-12 inline-block px-5 py-3 text-sm font-semibold text-white"
               style={{ backgroundColor: accent }}
             >
-              Download PDF
-            </a>
+              Save as PDF
+            </button>
           )}
         </div>
       </section>

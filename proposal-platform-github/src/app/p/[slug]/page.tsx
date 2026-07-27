@@ -13,10 +13,10 @@ export default async function ProposalPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ print?: string }>;
+  searchParams: Promise<{ print?: string; autoprint?: string }>;
 }) {
   const { slug } = await params;
-  const { print } = await searchParams;
+  const { print, autoprint } = await searchParams;
 
   // A signed-in Blockworks rep previewing their own work gets a way back to
   // the builder. A sponsor has no cookie, so they never see it — and it isn't
@@ -60,10 +60,20 @@ export default async function ProposalPage({
   ) as SponsorshipModule | undefined;
 
   // The whole content deck, rendered, for the "view sales deck" option.
-  const { data: deckPages } = await supabase
-    .from('deck_pages')
-    .select('page_index, image_url')
-    .order('page_index', { ascending: true });
+  // Skipped when printing: that view can't be reached in a PDF, and shipping
+  // ~20 slide URLs into a render that will never show them is weight the
+  // headless browser has to carry.
+  // Built as a plain string[] rather than a conditional query result: a
+  // ternary over two differently-shaped results gives a union of array types,
+  // and .map() on that doesn't typecheck.
+  let deckImages: string[] = [];
+  if (print !== '1') {
+    const { data } = await supabase
+      .from('deck_pages')
+      .select('page_index, image_url')
+      .order('page_index', { ascending: true });
+    deckImages = (data ?? []).map((row) => row.image_url as string);
+  }
 
   return (
     <>
@@ -74,21 +84,16 @@ export default async function ProposalPage({
           <Link href="/builder" className="px-3 py-1.5 hover:text-white">
             All proposals
           </Link>
-          <Link
-            href={`/builder/proposal/${slug}/edit`}
-            className="bg-neutral-100 px-3 py-1.5 font-semibold text-neutral-900 hover:bg-white"
-          >
-            Edit
-          </Link>
         </div>
       )}
       <ProposalView
         proposal={proposal as Proposal}
-        deckPages={(deckPages ?? []).map((p) => p.image_url)}
+        deckPages={deckImages}
         modules={modules}
         tierTable={tierTable}
         tierTables={(tierTables ?? []) as SponsorshipModule[]}
         skipGate={print === '1'}
+        autoPrint={autoprint === '1'}
       />
     </>
   );

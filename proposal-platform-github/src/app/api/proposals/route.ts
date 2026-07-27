@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { proposalColumns, replaceModules, picksFrom, type ProposalInput } from '@/lib/proposal-write';
+import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
+import {
+  proposalColumns,
+  replaceModules,
+  picksFrom,
+  allowsNoModules,
+  missingRequiredField,
+  type ProposalInput,
+} from '@/lib/proposal-write';
 
 function slugify(company: string): string {
   const base = company
@@ -14,12 +22,23 @@ function slugify(company: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Checked before the body is even read: creating a proposal is a write, and
+  // the page it produces is public to whoever holds the link. PATCH on
+  // /api/proposals/[slug] has always done this; POST had not.
+  if (!readSessionToken(req.cookies.get(BUILDER_COOKIE_NAME)?.value ?? '')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const input = (await req.json()) as ProposalInput;
 
   const picks = picksFrom(input);
-  if (!input.company || !picks.length) {
+  const missing = missingRequiredField(input);
+  if (missing) {
+    return NextResponse.json({ error: missing }, { status: 400 });
+  }
+  if (!picks.length && !allowsNoModules(input)) {
     return NextResponse.json(
-      { error: 'company and at least one module are required.' },
+      { error: 'At least one module is required, except on a Gold tier.' },
       { status: 400 }
     );
   }

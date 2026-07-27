@@ -17,10 +17,12 @@ interface Benefit {
 const BENEFITS: Benefit[] = [
   {
     match: /fireside|keynote/i,
+    // Deliberately not "main stage": the row resolves to Main Stage for
+    // Presenting and Track Stage for Diamond, so naming one would be wrong
+    // half the time. The tier table beside it says which.
     copy:
-      'Position your brand as an industry leader with a featured main stage speaking ' +
-      'opportunity, either through a keynote presentation or a moderated fireside chat ' +
-      'with a leading voice in digital assets and institutional finance.',
+      'Position your brand as an industry leader with a featured stage speaking ' +
+      'opportunity, either through a keynote presentation or a fireside.',
   },
   {
     match: /brand(ing)?\s*&?\s*activation/i,

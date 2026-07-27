@@ -28,7 +28,7 @@ export function DasWordmark({ event, accent }: { event: string | null; accent: s
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={asset} alt={`Digital Asset Summit 2026 ${EVENT_LABEL[key]}`}
-        className="mx-auto block h-auto w-[min(440px,82%)]" />
+        className="mx-auto block h-auto w-[min(560px,88%)]" />
     );
   }
 
@@ -37,14 +37,14 @@ export function DasWordmark({ event, accent }: { event: string | null; accent: s
   // lowercase and widely letter-spaced in the event accent.
   return (
     <div className="text-center leading-[0.95]">
-      <div className="text-5xl font-bold tracking-[-0.02em] sm:text-6xl">Digital Asset</div>
-      <div className="text-5xl tracking-[-0.02em] sm:text-6xl">
+      <div className="text-6xl font-bold tracking-[-0.02em] sm:text-7xl">Digital Asset</div>
+      <div className="text-6xl tracking-[-0.02em] sm:text-7xl">
         <span className="font-bold">Summit</span>
         <span className="ml-2 font-light">2026</span>
       </div>
       {EVENT_LABEL[key] && (
         <div
-          className="mt-3 text-2xl font-medium lowercase tracking-[0.42em] sm:text-3xl"
+          className="mt-4 text-3xl font-medium lowercase tracking-[0.42em] sm:text-4xl"
           style={{ color: accent }}
         >
           {EVENT_LABEL[key]}

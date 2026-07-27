@@ -92,7 +92,7 @@ export function TierIncluded({
         {included.length > 0 && (
           <div className="bg-white px-8 py-6">
             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              What&apos;s included
+              What&apos;s Included
             </div>
             <dl className="mt-3 divide-y divide-neutral-100">
               {included.map((row) => (

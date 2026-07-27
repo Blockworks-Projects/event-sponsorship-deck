@@ -5,6 +5,20 @@ import type { SponsorshipModule } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
+/** "Today, 4:12 PM" / "24 Jul, 4:12 PM" — a rep wants to know how recent a
+ * view was, and the year is noise for a proposal sent this season. */
+function formatWhen(iso: string): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  const sameDay =
+    at.getDate() === today.getDate() &&
+    at.getMonth() === today.getMonth() &&
+    at.getFullYear() === today.getFullYear();
+  if (sameDay) return `Today, ${time}`;
+  return `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
 const EVENT_LABEL: Record<string, string> = {
   london: 'London',
   asia: 'Asia',
@@ -36,6 +50,16 @@ export default async function BuilderProposalPage({
   const modules = (links ?? [])
     .map((l) => l.sponsorship_modules)
     .filter(Boolean) as unknown as SponsorshipModule[];
+
+  // Who has opened the link, newest first. Written by the email gate, so a
+  // row here means someone got past it with the right address.
+  const { data: viewRows } = await supabase
+    .from('deck_views')
+    .select('id, viewer_email, started_at')
+    .eq('proposal_id', proposal.id)
+    .order('started_at', { ascending: false })
+    .limit(50);
+  const views = viewRows ?? [];
 
   return (
     <div className="px-6 py-10 text-neutral-50">
@@ -78,16 +102,54 @@ export default async function BuilderProposalPage({
             PDF
           </h2>
           <p className="mt-2 text-sm text-neutral-300">
-            The same proposal as a file, for attaching to an email.
+            Opens the proposal and raises your print dialog. Choose
+            &ldquo;Save as PDF&rdquo; as the destination.
           </p>
-          {/* A plain link, not fetch(): the browser handles the download and
-              the wait, and headless Chrome takes a few seconds to render. */}
+          {/* Printed by your own browser rather than rendered on the server:
+              headless Chrome in a serverless container runs out of memory on
+              a proposal this image-heavy, and your machine never will. */}
           <a
-            href={`/api/proposals/${proposal.slug}/pdf`}
+            href={`/p/${proposal.slug}?print=1&autoprint=1`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="mt-3 inline-block bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
           >
-            Download PDF
+            Save as PDF
           </a>
+        </section>
+
+        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            Views
+          </h2>
+          {views.length === 0 ? (
+            <p className="mt-2 text-sm text-neutral-500">
+              Not opened yet. Every time someone enters their email to view this, it
+              lands here.
+            </p>
+          ) : (
+            <>
+              <p className="mt-2 text-sm text-neutral-300">
+                {views.length} view{views.length === 1 ? '' : 's'}
+                {' · '}
+                {new Set(views.map((v) => v.viewer_email)).size} viewer
+                {new Set(views.map((v) => v.viewer_email)).size === 1 ? '' : 's'}
+              </p>
+              <ul className="mt-3 space-y-2">
+                {views.map((v) => (
+                  <li
+                    key={v.id}
+                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-neutral-800 pb-2 text-sm last:border-b-0 last:pb-0"
+                  >
+                    <span className="text-neutral-200">{v.viewer_email}</span>
+                    <span className="text-xs text-neutral-500">
+                      {formatWhen(v.started_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">

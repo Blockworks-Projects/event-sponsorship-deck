@@ -144,9 +144,53 @@
    drift from what a sponsor sees on the web. These rules only fix what
    pagination breaks: blocks splitting mid-card, and a screen-height cover
    eating most of page one. */
+/* Printing straight from the browser is the primary way a proposal becomes a
+   PDF, so the printed page is set up here rather than being left to whatever
+   the print dialog defaults to.
+   The page is sized in pixels, not "A4". At A4's ~794px the layout reflows to
+   its narrow breakpoints: the hero stats wrap, the shapes clip at the edges
+   and the cover leaves half a page empty. 1240x1754 is the width the design
+   is built for, at A4's 1:1.414 ratio, so it still prints on A4 paper — the
+   browser just scales it. Margins are zero because the design carries its
+   own. */
+@page {
+  size: 1240px 1754px;
+  /* Vertical breathing room so text never butts against the paper edge.
+     Horizontal padding comes from the layout's own column. */
+  margin: 64px 0;
+}
+
+/* The cover is full-bleed artwork, so it gets its own page with no margin.
+   Named pages, so one rule doesn't have to serve both. */
+@page cover {
+  margin: 0;
+}
+
 @media print {
+  /* Anything interactive is meaningless on paper. */
+  .print-hide {
+    display: none !important;
+  }
   .pdf-block {
     break-inside: avoid;
+  }
+  /* A tier row split across two pages leaves half a sentence on each. */
+  .benefit,
+  tr {
+    break-inside: avoid;
+  }
+  /* Screen spacing is generous because a page scrolls; paper doesn't. The
+     selector beats Tailwind's py-* utilities on specificity, so no
+     !important is needed. The cover keeps its own full-page layout. */
+  section:not(.pdf-cover) {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+  /* The proposal's own background stops where its content does, which left
+     the foot of the last page bright white against the warm grey above it. */
+  html,
+  body {
+    background: #fafafa;
   }
   /* A section label stranded at the foot of a page reads as a mistake. */
   .pdf-keep-with-next {
@@ -155,10 +199,16 @@
   h2 {
     break-after: avoid;
   }
+  /* The cover is its own page: sized to fill one, so what follows starts
+     cleanly at the top of the next rather than after half a page of white. */
   .pdf-cover {
+    page: cover;
     min-height: 0;
-    padding-top: 4rem;
-    padding-bottom: 4rem;
+    height: 1754px;
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+    break-after: page;
   }
 }
 
@@ -183,15 +233,19 @@
   --hero-half: min(420px, calc(50vw - 40px));
 }
 .hero-shape-left {
-  top: 22%;
-  left: calc(50% - var(--hero-half) - var(--w) - 24px);
-  --w: clamp(104px, 9.5vw, 168px);
+  /* Anchored to the page, not to the text column. Tied to the column they
+     were pushed off the edge as soon as they grew, and on a printed page
+     that reads as a mistake rather than as artwork running off. They sit
+     behind the copy, which is why overlap at narrow widths is harmless. */
+  top: 14%;
+  left: 5%;
+  --w: clamp(140px, 15vw, 260px);
   animation: heroFloatA 11s ease-in-out infinite;
 }
 .hero-shape-right {
-  bottom: 8%;
-  right: calc(50% - var(--hero-half) - var(--w) - 24px);
-  --w: clamp(104px, 9.5vw, 168px);
+  bottom: 10%;
+  right: 5%;
+  --w: clamp(140px, 15vw, 260px);
   animation: heroFloatB 9.5s ease-in-out infinite;
 }
 /* Both events: one tri-colour cluster rather than a city's pair, since
