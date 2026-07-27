@@ -63,12 +63,17 @@ export default async function ProposalPage({
   // Skipped when printing: that view can't be reached in a PDF, and shipping
   // ~20 slide URLs into a render that will never show them is weight the
   // headless browser has to carry.
-  const { data: deckPages } = print === '1'
-    ? { data: [] }
-    : await supabase
-        .from('deck_pages')
-        .select('page_index, image_url')
-        .order('page_index', { ascending: true });
+  // Built as a plain string[] rather than a conditional query result: a
+  // ternary over two differently-shaped results gives a union of array types,
+  // and .map() on that doesn't typecheck.
+  let deckImages: string[] = [];
+  if (print !== '1') {
+    const { data } = await supabase
+      .from('deck_pages')
+      .select('page_index, image_url')
+      .order('page_index', { ascending: true });
+    deckImages = (data ?? []).map((row) => row.image_url as string);
+  }
 
   return (
     <>
@@ -83,7 +88,7 @@ export default async function ProposalPage({
       )}
       <ProposalView
         proposal={proposal as Proposal}
-        deckPages={(deckPages ?? []).map((p) => p.image_url)}
+        deckPages={deckImages}
         modules={modules}
         tierTable={tierTable}
         tierTables={(tierTables ?? []) as SponsorshipModule[]}

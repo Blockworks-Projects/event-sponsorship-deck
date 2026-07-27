@@ -1,3 +1,4 @@
+import { optimized } from '@/lib/image';
 import type { SponsorshipModule } from '@/lib/types';
 
 // Availability is deliberately not shown: a sponsor receiving a proposal can
@@ -22,7 +23,7 @@ export function SlideImage({ module: m }: { module: SponsorshipModule }) {
     // means it renders around 1.3x and stays crisp.
     <div className="mx-auto max-w-[1240px] overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.images[0]} alt={m.title} className="block w-full mix-blend-multiply" />
+      <img src={optimized(m.images[0])} alt={m.title} className="block w-full mix-blend-multiply" />
     </div>
   );
 }
@@ -49,8 +50,9 @@ export function ModuleCard({
       {m.images.length > 0 && (
         <div className="flex h-48 shrink-0 gap-px bg-neutral-200">
           {m.images.slice(0, 2).map((src, i) => (
+            // Half-width thumbnails in a 48-tall strip; they never need 1240px.
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={src} alt="" className="h-full flex-1 object-cover" />
+            <img key={i} src={optimized(src, 640)} alt="" className="h-full flex-1 object-cover" />
           ))}
         </div>
       )}

@@ -23,7 +23,7 @@ function localChromePath(): string {
   return '/usr/bin/google-chrome';
 }
 
-function launch(keepSingleProcess: boolean): Promise<Browser> {
+async function launch(keepSingleProcess: boolean): Promise<Browser> {
   // @sparticuz/chromium ships "--single-process", which runs the renderer
   // inside the browser process. On this runtime that makes any teardown take
   // the navigating frame with it, which surfaces as "Navigating frame was
@@ -41,7 +41,7 @@ function launch(keepSingleProcess: boolean): Promise<Browser> {
   return process.env.VERCEL
     ? puppeteer.launch({
         args,
-        executablePath: chromium.executablePath(),
+        executablePath: await chromium.executablePath(),
         headless: true,
       })
     : puppeteer.launch({ executablePath: localChromePath(), headless: true });

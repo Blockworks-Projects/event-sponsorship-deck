@@ -8,6 +8,7 @@ import { TierGrid } from '@/components/tier-grid';
 import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
 import { KIOSK } from '@/lib/kiosk';
+import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
@@ -606,7 +607,7 @@ export function ProposalView({
             {KIOSK.image && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={KIOSK.image}
+                src={optimized(KIOSK.image, 384)}
                 alt="A branded kiosk with a screen, plinth and stool"
                 className="w-[200px] shrink-0 self-center"
               />
