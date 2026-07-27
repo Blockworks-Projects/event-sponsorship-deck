@@ -73,8 +73,8 @@ function nameFromEmail(email: string): string {
 function HeroStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div>
-      <dd className="text-xl font-bold" style={accent ? { color: accent } : undefined}>{value}</dd>
-      <dt className="mt-1 text-xs uppercase tracking-widest text-neutral-400">{label}</dt>
+      <dd className="text-2xl font-bold" style={accent ? { color: accent } : undefined}>{value}</dd>
+      <dt className="mt-1.5 text-sm uppercase tracking-widest text-neutral-400">{label}</dt>
     </div>
   );
 }
@@ -216,7 +216,9 @@ export function ProposalView({
               <div className="flex justify-center">
                 <DasWordmark event={proposal.event} accent={gateAccent} />
               </div>
-              <h1 className="mt-8 text-3xl font-bold tracking-tight">Partnership Proposal</h1>
+              <h1 className="mt-10 text-4xl font-bold tracking-tight sm:text-5xl">
+              Partnership Proposal
+            </h1>
             </>
           )}
 
@@ -428,27 +430,29 @@ export function ProposalView({
           </div>
         ) : (
           // One city: the portal's centred hero.
-          <div className="relative mx-auto flex w-full max-w-[880px] flex-col items-center text-center">
+          <div className="relative mx-auto flex w-full max-w-[1040px] flex-col items-center text-center">
             <DasWordmark event={proposal.event} accent={accent} />
 
-            <h1 className="mt-8 text-3xl font-bold tracking-tight">Partnership Proposal</h1>
+            <h1 className="mt-10 text-4xl font-bold tracking-tight sm:text-5xl">
+              Partnership Proposal
+            </h1>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <div className="mt-10 flex flex-wrap justify-center gap-3">
               <a
                 href={EVENT_SITE[(proposal.event || '').toLowerCase()] ?? 'https://blockworks.com/event'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white"
+                className="border border-neutral-300 px-6 py-3 text-base font-medium text-neutral-700 hover:bg-white"
               >
                 Event website
               </a>
               {salesDeck(
-                'border border-neutral-300 px-5 py-2.5 text-sm font-medium text-neutral-700 hover:bg-white',
+                'border border-neutral-300 px-6 py-3 text-base font-medium text-neutral-700 hover:bg-white',
                 'Sales deck'
               )}
             </div>
 
-            <dl className="mt-14 flex flex-wrap items-start justify-center gap-x-14 gap-y-8">
+            <dl className="mt-16 flex flex-wrap items-start justify-center gap-x-12 gap-y-10">
               {facts && (
                 <>
                   <HeroStat label="Dates" value={facts.dates} />
