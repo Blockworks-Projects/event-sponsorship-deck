@@ -103,11 +103,12 @@ async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Ui
       await document.fonts.ready;
     });
 
+    // preferCSSPageSize so this uses the same @page rule the browser's own
+    // print dialog does. The two paths then produce the same document rather
+    // than drifting apart.
     return await page.pdf({
-      width: `${PAGE_WIDTH}px`,
-      height: `${PAGE_HEIGHT}px`,
+      preferCSSPageSize: true,
       printBackground: true,
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
       timeout: 45_000,
     });
   } finally {

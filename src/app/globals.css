@@ -146,10 +146,15 @@
    eating most of page one. */
 /* Printing straight from the browser is the primary way a proposal becomes a
    PDF, so the printed page is set up here rather than being left to whatever
-   the print dialog defaults to. Margins are zero because the design carries
-   its own; A4 so it matches what a sponsor's printer expects. */
+   the print dialog defaults to.
+   The page is sized in pixels, not "A4". At A4's ~794px the layout reflows to
+   its narrow breakpoints: the hero stats wrap, the shapes clip at the edges
+   and the cover leaves half a page empty. 1240x1754 is the width the design
+   is built for, at A4's 1:1.414 ratio, so it still prints on A4 paper — the
+   browser just scales it. Margins are zero because the design carries its
+   own. */
 @page {
-  size: A4;
+  size: 1240px 1754px;
   margin: 0;
 }
 
@@ -168,10 +173,15 @@
   h2 {
     break-after: avoid;
   }
+  /* The cover is its own page: sized to fill one, so what follows starts
+     cleanly at the top of the next rather than after half a page of white. */
   .pdf-cover {
     min-height: 0;
-    padding-top: 4rem;
-    padding-bottom: 4rem;
+    height: 1754px;
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+    break-after: page;
   }
 }
 
