@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
+import { CopyLink } from '@/components/copy-link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { SponsorshipModule } from '@/lib/types';
@@ -61,6 +63,15 @@ export default async function BuilderProposalPage({
     .limit(50);
   const views = viewRows ?? [];
 
+  // The link a sponsor is sent. Shown short — without the random suffix that
+  // proposals made before named slugs still carry — and copied in full.
+  const host = (await headers()).get('host') ?? '';
+  const origin =
+    process.env.NEXT_PUBLIC_BASE_URL ??
+    `${host.startsWith('localhost') ? 'http' : 'https'}://${host}`;
+  const shareUrl = `${origin}/p/${proposal.slug}`;
+  const shareDisplay = `${origin}/p/${proposal.slug.replace(/-[a-z0-9]{4}$/, '')}`;
+
   return (
     <div className="px-6 py-10 text-neutral-50">
       <div className="mx-auto max-w-3xl space-y-8">
@@ -88,13 +99,7 @@ export default async function BuilderProposalPage({
           <p className="mt-2 text-sm text-neutral-300">
             Tracked page. Viewers enter their details before seeing it, and every view is logged.
           </p>
-          <Link
-            href={`/p/${proposal.slug}`}
-            target="_blank"
-            className="mt-3 inline-block text-sm underline"
-          >
-            /p/{proposal.slug}
-          </Link>
+          <CopyLink url={shareUrl} display={shareDisplay} />
         </section>
 
         <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
