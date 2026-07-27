@@ -3,23 +3,10 @@ import { headers } from 'next/headers';
 import { CopyLink } from '@/components/copy-link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { formatWhen } from '@/lib/format';
 import type { SponsorshipModule } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
-
-/** "Today, 4:12 PM" / "24 Jul, 4:12 PM" — a rep wants to know how recent a
- * view was, and the year is noise for a proposal sent this season. */
-function formatWhen(iso: string): string {
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const today = new Date();
-  const sameDay =
-    at.getDate() === today.getDate() &&
-    at.getMonth() === today.getMonth() &&
-    at.getFullYear() === today.getFullYear();
-  if (sameDay) return `Today, ${time}`;
-  return `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
-}
 
 const EVENT_LABEL: Record<string, string> = {
   london: 'London',

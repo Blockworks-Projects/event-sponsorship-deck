@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { speakerRole, type SponsorshipModule, type ContentSession, type SessionSpeaker, type Proposal } from '@/lib/types';
 import { parsePrice, formatPrice } from '@/lib/pricing';
 import { validEmailList } from '@/lib/contacts';
+import { AccountPicker, type Account } from '@/components/account-picker';
+import { SELLERS } from '@/lib/sellers';
 
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
@@ -104,9 +106,7 @@ export function ProposalForm({
    * typing a company that isn't on the list is still fine — plenty of records
    * have no handler or logo anyway.
    */
-  const [accounts, setAccounts] = useState<
-    { id: string; name: string; contactName?: string; contactEmail?: string; logoUrl?: string }[]
-  >([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [appliedAccount, setAppliedAccount] = useState<string | null>(null);
 
   useEffect(() => {
@@ -123,12 +123,18 @@ export function ProposalForm({
     };
   }, []);
 
-  /** Fill what the account knows, leaving anything it doesn't know alone. */
-  async function applyAccount(account: (typeof accounts)[number]) {
+  /**
+   * Take on this account's details wholesale — including the blanks. Filling
+   * only what the new account knows would leave the previous sponsor's
+   * contact sitting under a different company name, which is how a proposal
+   * gets sent to the wrong person.
+   */
+  async function applyAccount(account: Account) {
     setAppliedAccount(account.id);
     setCompany(account.name);
-    if (account.contactName) setContactName(account.contactName);
-    if (account.contactEmail) setContactEmail(account.contactEmail);
+    setContactName(account.contactName ?? '');
+    setContactEmail(account.contactEmail ?? '');
+    setLogoUrl('');
     if (account.logoUrl) {
       // Airtable's URL expires within hours, so it's copied to our own
       // storage now rather than saved as-is.
@@ -818,33 +824,23 @@ export function ProposalForm({
                 required
                 hint={accounts.length ? 'Pick an existing sponsor, or type a new one.' : undefined}
               >
-                {/* A datalist rather than a select: the rep can still type a
-                    company that isn't an account yet, which is the whole
-                    point of "or add someone new". */}
-                <Input
-                  name="sponsor-company"
-                  autoComplete="off"
-                  list="sponsor-accounts"
-                  placeholder="e.g. Uniswap"
+                <AccountPicker
+                  accounts={accounts}
                   value={company}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setCompany(value);
-                    const match = accounts.find(
-                      (a) => a.name.toLowerCase() === value.trim().toLowerCase()
-                    );
-                    // Only on the transition into an account, so a rep who
-                    // corrects the contact afterwards doesn't have it
-                    // overwritten by their next keystroke.
-                    if (match && match.id !== appliedAccount) applyAccount(match);
-                    if (!match) setAppliedAccount(null);
+                  onPick={applyAccount}
+                  onChange={(name) => {
+                    setCompany(name);
+                    // Typing over a company that came from an account drops
+                    // that account's details: a new company with the old
+                    // sponsor's contact still filled in is worse than blank.
+                    if (appliedAccount) {
+                      setAppliedAccount(null);
+                      setContactName('');
+                      setContactEmail('');
+                      setLogoUrl('');
+                    }
                   }}
                 />
-                <datalist id="sponsor-accounts">
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.name} />
-                  ))}
-                </datalist>
               </Fieldset>
               <Fieldset label="Contact name" required>
                 <Input
@@ -907,12 +903,23 @@ export function ProposalForm({
                   />
                 )}
               </Fieldset>
-              <Fieldset label="Your name">
-                <Input
+              <Fieldset label="Your name" hint="Pick from the team, or type a new one.">
+                {/* The same picker as Company: a list to choose from, still
+                    an input so someone new isn't blocked. */}
+                <AccountPicker
+                  accounts={SELLERS.map((seller) => ({
+                    id: seller.id,
+                    name: seller.name,
+                    contactEmail: seller.email,
+                  }))}
                   name="rep-name"
-                  autoComplete="off"
+                  placeholder="e.g. Alex Barry"
                   value={createdByName}
-                  onChange={(e) => setCreatedByName(e.target.value)}
+                  onPick={(seller) => {
+                    setCreatedByName(seller.name);
+                    if (seller.contactEmail) setCreatedBy(seller.contactEmail);
+                  }}
+                  onChange={setCreatedByName}
                 />
               </Fieldset>
               <Fieldset label="Your email">

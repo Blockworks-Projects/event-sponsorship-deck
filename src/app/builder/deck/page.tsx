@@ -4,22 +4,10 @@
 // people, so it has one page of its own rather than a row in a list.
 import { headers } from 'next/headers';
 import { supabase } from '@/lib/supabase';
+import { formatWhen } from '@/lib/format';
 import { CopyLink } from '@/components/copy-link';
 
 export const dynamic = 'force-dynamic';
-
-/** "Today, 16:12" / "24 Jul, 16:12" — recency is what a rep is reading for. */
-function formatWhen(iso: string): string {
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const today = new Date();
-  const sameDay =
-    at.getDate() === today.getDate() &&
-    at.getMonth() === today.getMonth() &&
-    at.getFullYear() === today.getFullYear();
-  if (sameDay) return `Today, ${time}`;
-  return `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
-}
 
 /** Same labels the sponsor sees on the buttons. */
 const DECK_LABEL: Record<string, string> = {
