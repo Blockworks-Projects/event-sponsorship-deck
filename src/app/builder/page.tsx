@@ -88,6 +88,14 @@ export default async function BuilderHomePage({
             {email && <p className="mt-1 text-sm text-neutral-400">Signed in as {email}</p>}
           </div>
           <div className="flex items-center gap-3">
+            {/* Secondary next to the primary: making a proposal is the usual
+                job here; the deck link is the occasional one. */}
+            <Link
+              href="/builder/deck"
+              className="border border-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-300 hover:border-neutral-500 hover:text-white"
+            >
+              Deck link
+            </Link>
             <Link
               href="/builder/new"
               className="bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
