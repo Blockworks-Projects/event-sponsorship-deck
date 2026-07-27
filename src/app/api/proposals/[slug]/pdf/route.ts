@@ -23,14 +23,24 @@ function localChromePath(): string {
   return '/usr/bin/google-chrome';
 }
 
-function launch(): Promise<Browser> {
-  // @sparticuz/chromium ships a Linux x64 binary, which is what Vercel runs
-  // on but not what a Mac dev machine can spawn (it fails with ENOEXEC).
-  // Locally, fall back to whatever Chrome is already installed so the PDF
-  // path is testable off-Vercel too.
+function launch(keepSingleProcess: boolean): Promise<Browser> {
+  // @sparticuz/chromium ships "--single-process", which runs the renderer
+  // inside the browser process. On this runtime that makes any teardown take
+  // the navigating frame with it, which surfaces as "Navigating frame was
+  // detached" on every render — reproducibly on Vercel, never on a Mac,
+  // because a local Chrome is not launched with the flag. The package keeps
+  // it to dodge a `prctl(PR_SET_NO_NEW_PRIVS)` error, but --no-sandbox and
+  // --no-zygote (both also set) already cover that here.
+  const args = keepSingleProcess
+    ? chromium.args
+    : chromium.args.filter((flag) => flag !== '--single-process');
+
+  // The binary it ships is Linux x64, which is what Vercel runs but not what
+  // a Mac can spawn (ENOEXEC). Locally, use whatever Chrome is installed so
+  // this path stays testable off-Vercel.
   return process.env.VERCEL
     ? puppeteer.launch({
-        args: chromium.args,
+        args,
         executablePath: chromium.executablePath(),
         headless: true,
       })
@@ -38,8 +48,8 @@ function launch(): Promise<Browser> {
 }
 
 /** One render attempt, browser included, so a retry starts genuinely clean. */
-async function render(targetUrl: string): Promise<Uint8Array> {
-  const browser = await launch();
+async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Uint8Array> {
+  const browser = await launch(keepSingleProcess);
   try {
     const page = await browser.newPage();
     // A4 portrait is only ~794px wide, which squeezes a layout built for
@@ -92,7 +102,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const pdf = await render(targetUrl);
+      // Second pass restores --single-process, so if dropping it ever stops
+      // Chrome starting at all on some future runtime, the retry recovers
+      // instead of repeating the same failure.
+      const pdf = await render(targetUrl, attempt === 1);
       return new NextResponse(Buffer.from(pdf), {
         headers: {
           'Content-Type': 'application/pdf',
