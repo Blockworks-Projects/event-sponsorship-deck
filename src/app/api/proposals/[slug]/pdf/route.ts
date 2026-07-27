@@ -138,7 +138,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   const { slug } = await params;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-  const targetUrl = `${baseUrl}/p/${slug}?print=1`;
+  const targetUrl = `${baseUrl}/${slug}?print=1`;
 
   // Keyed on updated_at, so editing a proposal produces a new key and the
   // next download re-renders. No cache to invalidate by hand.

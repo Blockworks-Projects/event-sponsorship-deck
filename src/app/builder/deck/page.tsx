@@ -26,7 +26,7 @@ export default async function DeckLinkPage() {
   const origin =
     process.env.NEXT_PUBLIC_BASE_URL ??
     `${host.startsWith('localhost') ? 'http' : 'https'}://${host}`;
-  const url = `${origin}/deck`;
+  const url = `${origin}/sponsorships`;
 
   const [{ data: pages }, { data: viewRows }] = await Promise.all([
     supabase.from('deck_pages').select('page_index').order('page_index', { ascending: true }),

@@ -69,8 +69,8 @@ export default async function BuilderProposalPage({
   const origin =
     process.env.NEXT_PUBLIC_BASE_URL ??
     `${host.startsWith('localhost') ? 'http' : 'https'}://${host}`;
-  const shareUrl = `${origin}/p/${proposal.slug}`;
-  const shareDisplay = `${origin}/p/${proposal.slug.replace(/-[a-z0-9]{4}$/, '')}`;
+  const shareUrl = `${origin}/${proposal.slug}`;
+  const shareDisplay = `${origin}/${proposal.slug.replace(/-[a-z0-9]{4}$/, '')}`;
 
   return (
     <div className="px-6 py-10 text-neutral-50">
@@ -114,7 +114,7 @@ export default async function BuilderProposalPage({
               headless Chrome in a serverless container runs out of memory on
               a proposal this image-heavy, and your machine never will. */}
           <a
-            href={`/p/${proposal.slug}?print=1&autoprint=1`}
+            href={`/${proposal.slug}?print=1&autoprint=1`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-3 inline-block bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"

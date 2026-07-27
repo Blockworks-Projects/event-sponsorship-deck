@@ -46,7 +46,7 @@ Add one more that has no local equivalent:
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_BASE_URL` | The site's own URL, e.g. `https://your-project.vercel.app` |
+| `NEXT_PUBLIC_BASE_URL` | The site's own URL, e.g. `https://event-proposals.blockworks.com` |
 
 This is what sign-in links and the PDF renderer point at. Set it after the first
 deploy, when you know the URL, then redeploy. **Update it again the day you move
