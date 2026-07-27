@@ -188,8 +188,12 @@
   }
   /* Activations stay two-up on paper. Left to the md: breakpoint this
      depends on how wide the print layout happens to be, and a single column
-     stretches each card across the full page. */
-  .pdf-two-up {
+     stretches each card across the full page.
+     The class is doubled deliberately: Tailwind's own grid-cols-1 has the
+     same specificity as a single class, and its utility layer is emitted
+     after this file — so a single .pdf-two-up loses the cascade and the
+     cards stack anyway. 0-2-0 beats it whatever the order. */
+  .pdf-two-up.pdf-two-up {
     grid-template-columns: 1fr 1fr;
   }
 
