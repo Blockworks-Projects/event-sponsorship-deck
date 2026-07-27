@@ -7,6 +7,7 @@ import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
 import { TierGrid } from '@/components/tier-grid';
 import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
+import { KIOSK } from '@/lib/kiosk';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
@@ -145,6 +146,15 @@ export function ProposalView({
         {label}
       </button>
     );
+
+  // The kiosk is a London offer — Asia's tiers don't include one — so an
+  // Asia-only proposal never shows this section. Unset means yes: it's the
+  // default in the builder, and proposals made before the toggle existed all
+  // included one.
+  const londonInScope = proposal.event === 'london' || proposal.event === 'both';
+  // Kiosk or nothing: turning it off simply drops the section.
+  const showKiosk = londonInScope && proposal.include_kiosk !== false;
+  const kioskAccent = EVENT_ACCENT.london;
 
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
@@ -465,6 +475,7 @@ export function ProposalView({
                 lands after the pricing, where it can speak to the numbers. */}
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-neutral-700">
               We&apos;ve curated this proposal exclusively for{' '}
+              <strong className="font-semibold text-neutral-900">{proposal.company}</strong> at{' '}
               <strong className="font-semibold text-neutral-900">
                 Digital Asset Summit{' '}
                 {bothEvents ? 'London and Asia' : EVENT_NAME[(proposal.event || '').toLowerCase()] ?? ''}
@@ -486,6 +497,23 @@ export function ProposalView({
         <TierGrid proposal={proposal} tierTables={tierTables} accent={accent} />
       ) : (
         <TierIncluded proposal={proposal} tierTable={tierTable} accent={accent} />
+      )}
+
+      {/* Sits directly under the tier grid: it's usually a bonus thrown in on
+          top of the tier, so it reads as part of what they're getting. */}
+      {proposal.intro_note && (
+        <section className="pdf-block mx-auto max-w-6xl px-10 pb-4">
+          <div className="border-l-2 pl-6" style={{ borderColor: accent }}>
+            <p className="max-w-2xl text-lg leading-relaxed text-neutral-700">
+              {proposal.intro_note}
+            </p>
+            {proposal.created_by && (
+              <p className="mt-3 text-sm text-neutral-500">
+                {proposal.created_by_name || nameFromEmail(proposal.created_by)}, Blockworks
+              </p>
+            )}
+          </div>
+        </section>
       )}
 
       <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">
@@ -544,6 +572,37 @@ export function ProposalView({
         )}
       </section>
 
+      {showKiosk && (
+        <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">
+          {/* Same treatment as "Your Partnership" above it: these are
+              sections of the offer, not of the event background. */}
+          <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: kioskAccent }}>
+            Your Kiosk
+          </h2>
+          <div className="mt-6 flex flex-wrap items-start gap-10 border border-neutral-200 bg-white p-8">
+            <div className="min-w-[260px] flex-1">
+              <h3 className="text-2xl font-bold tracking-tight">{KIOSK.title}</h3>
+              <ul className="mt-5 space-y-3">
+                {KIOSK.points.map((point) => (
+                  <li key={point} className="flex gap-3 text-pretty leading-relaxed text-neutral-700">
+                    <span aria-hidden style={{ color: kioskAccent }}>→</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {KIOSK.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={KIOSK.image}
+                alt="A branded kiosk with a screen, plinth and stool"
+                className="w-[200px] shrink-0 self-center"
+              />
+            )}
+          </div>
+        </section>
+      )}
+
       {/* On a both-events proposal these have already been rendered inside
           their city's group above. */}
       {(bothEvents ? sessions.filter((s) => !s.event || !EVENTS_IN_ORDER.includes(s.event)) : sessions)
@@ -558,23 +617,6 @@ export function ProposalView({
         ))}
 
       <PriceBreakdown proposal={proposal} accent={accent} />
-
-      {/* Optional and personal, sitting under the numbers so it can speak to
-          them — a note about what's flexible, or why this shape was chosen. */}
-      {proposal.intro_note && (
-        <section className="pdf-block mx-auto max-w-6xl px-10 pb-4">
-          <div className="border-l-2 pl-6" style={{ borderColor: accent }}>
-            <p className="max-w-2xl text-lg leading-relaxed text-neutral-700">
-              {proposal.intro_note}
-            </p>
-            {proposal.created_by && (
-              <p className="mt-3 text-sm text-neutral-500">
-                {proposal.created_by_name || nameFromEmail(proposal.created_by)}, Blockworks
-              </p>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* Close. The price lives in the tier block above. */}
       <section className="pdf-block mx-auto max-w-6xl px-10 pb-28 pt-8">
@@ -596,7 +638,7 @@ export function ProposalView({
           {proposal.created_by && (
             <div className="mt-10 text-sm">
               <div className="font-semibold uppercase tracking-widest text-neutral-400" style={{ fontSize: '0.7rem' }}>
-                Your contact
+                Your Contact
               </div>
               <div className="mt-1 text-neutral-900">{proposal.created_by_name || nameFromEmail(proposal.created_by)}</div>
               <a href={`mailto:${proposal.created_by}`} className="text-neutral-500 underline">

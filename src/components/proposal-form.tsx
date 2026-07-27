@@ -96,6 +96,9 @@ export function ProposalForm({
   const [logoUrl, setLogoUrl] = useState(existing?.logo_url ?? '');
   const [logoUploading, setLogoUploading] = useState(false);
   const [introNote, setIntroNote] = useState(existing?.intro_note ?? '');
+  // London tiers include a kiosk, so yes is the default. A sponsor who takes
+  // additional tickets instead gets that section on the proposal instead.
+  const [includeKiosk, setIncludeKiosk] = useState(existing?.include_kiosk !== false);
   // Matches the eventFilter default, so the two can't start out of step.
   const [event, setEvent] = useState<string>(existing?.event ?? 'london');
   const [sponsorTier, setSponsorTier] = useState(existing?.tier ?? '');
@@ -336,7 +339,7 @@ export function ProposalForm({
     setError(null);
     if (!company.trim()) return setError('Company is required.');
     // Autofill has put a rep's own address in here before now.
-    if (/@/.test(company)) return setError('Company looks like an email address — check the field.');
+    if (/@/.test(company)) return setError('Company looks like an email address. Check the field.');
     if (!cart.length) return setError('Add at least one activation.');
     // Required, because it's now the key: the proposal page only opens for
     // this address. A blank one would leave the link open to anyone.
@@ -363,6 +366,7 @@ export function ProposalForm({
           discountAmount: discount.amount ?? undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
+          includeKiosk,
           contentSessions: sessionEvents
             .map((key) => ({ key, draft: draftFor(key) }))
             .filter(({ draft }) => draft.include && draft.heading.trim())
@@ -598,7 +602,7 @@ export function ProposalForm({
                       <Input
                         value={draft.heading}
                         onChange={(e) => setDraft(key, { heading: e.target.value })}
-                        placeholder="Mainstage Fireside with Uniswap & Key Institutional Partner"
+                        placeholder="Main Stage Fireside with Uniswap & Key Institutional Partner"
                       />
                     </Fieldset>
 
@@ -875,7 +879,7 @@ export function ProposalForm({
                   <Input
                     value={discountValue}
                     onChange={(e) => setDiscountValue(e.target.value)}
-                    placeholder="leave blank for none"
+                    placeholder="Leave blank for none"
                     inputMode="decimal"
                     className="flex-1"
                   />
@@ -941,12 +945,33 @@ export function ProposalForm({
                 />
               </Fieldset>
 
-              <Fieldset label="Note to the sponsor">
+              {/* Asia's tiers have no kiosk, so the question only makes
+                  sense when London is in scope. */}
+              {(event === 'london' || event === 'both') && (
+                <Fieldset
+                  label="Kiosk"
+                  hint="Included in London tiers. Off means additional tickets instead."
+                >
+                  <div className="flex gap-2">
+                    <Choice selected={includeKiosk} onClick={() => setIncludeKiosk(true)}>
+                      Yes
+                    </Choice>
+                    <Choice selected={!includeKiosk} onClick={() => setIncludeKiosk(false)}>
+                      No
+                    </Choice>
+                  </div>
+                </Fieldset>
+              )}
+
+              <Fieldset
+                label="Note to the sponsor"
+                hint="Write in any bonus here. Shown under the tier grid, signed with your name."
+              >
                 <textarea
                   value={introNote}
                   onChange={(e) => setIntroNote(e.target.value)}
                   rows={3}
-                  placeholder="optional, shown under the pricing"
+                  placeholder="e.g. Plus a complimentary branded coffee cart for both days."
                   className="w-full resize-y border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600"
                 />
               </Fieldset>

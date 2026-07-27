@@ -85,6 +85,7 @@ export interface Proposal {
   discounted_price: string | null;
   logo_url: string | null;
   intro_note: string | null;
+  include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session
   content_sessions: ContentSession[] | null;
   total_price: string | null;

@@ -22,6 +22,7 @@ export interface ProposalInput {
   discountAmount?: number;
   logoUrl?: string;
   introNote?: string;
+  includeKiosk?: boolean;
   contentSession?: ContentSession;
   contentSessions?: ContentSession[];
   /** Each pick, with the event it's for. */
@@ -140,6 +141,8 @@ export async function proposalColumns(input: ProposalInput) {
     created_by_name: input.createdByName || null,
     logo_url: input.logoUrl || null,
     intro_note: input.introNote || null,
+    // Undefined (an older client, or a field that wasn't sent) means yes.
+    include_kiosk: input.includeKiosk !== false,
     content_session: await persistSessionHeadshots(input.contentSession),
     content_sessions: input.contentSessions?.length
       ? ((

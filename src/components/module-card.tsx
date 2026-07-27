@@ -64,7 +64,7 @@ export function ModuleCard({
 
         {m.bullets.length > 0 && (
           <div className="mt-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">What&apos;s included</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">What&apos;s Included</div>
             <ul className="mt-2 space-y-1.5">
               {m.bullets.map((b, i) => (
                 <li key={i} className="flex gap-2 text-sm text-neutral-800">
