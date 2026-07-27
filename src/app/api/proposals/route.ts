@@ -11,14 +11,46 @@ import {
 } from '@/lib/proposal-write';
 
 function slugify(company: string): string {
-  const base = company
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-  const suffix = Math.random().toString(36).slice(2, 6);
-  return `${base || 'proposal'}-${suffix}`;
+  return (
+    company
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'proposal'
+  );
+}
+
+/**
+ * The sponsor's name, plain: /p/uniswap. A second proposal for the same
+ * sponsor becomes /p/uniswap-2, a third /p/uniswap-3.
+ *
+ * The link is the thing a sponsor sees and a mail filter judges, so a clean
+ * one is worth a query.
+ *
+ * Numbering is based on proposals that currently exist, so deleting one frees
+ * its slug for the next proposal of the same name. That matters only if a
+ * deleted proposal's link is still in someone's inbox: they'd land on the new
+ * one rather than a 404. Storing retired slugs would prevent it, at the cost
+ * of a table that exists solely to keep numbers climbing.
+ */
+async function uniqueSlug(company: string): Promise<string> {
+  const base = slugify(company);
+
+  const { data: taken } = await supabase
+    .from('proposals')
+    .select('slug')
+    .or(`slug.eq.${base},slug.like.${base}-%`);
+
+  const used = new Set((taken ?? []).map((row) => row.slug));
+  if (!used.has(base)) return base;
+
+  for (let n = 2; n < 500; n++) {
+    if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+  }
+  // Absurd in practice, but a slug collision would fail the insert, so fall
+  // back to something that cannot collide rather than erroring.
+  return `${base}-${Date.now().toString(36)}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -45,7 +77,11 @@ export async function POST(req: NextRequest) {
 
   const { data: proposal, error } = await supabase
     .from('proposals')
-    .insert({ ...(await proposalColumns(input)), slug: slugify(input.company), status: 'draft' })
+    .insert({
+      ...(await proposalColumns(input)),
+      slug: await uniqueSlug(input.company),
+      status: 'draft',
+    })
     .select()
     .single();
 

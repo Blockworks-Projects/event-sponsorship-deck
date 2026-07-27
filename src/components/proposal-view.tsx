@@ -568,7 +568,7 @@ export function ProposalView({
                 >
                   {key === 'nyc' ? 'new york' : key}
                 </h3>
-                <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="pdf-two-up mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {items.map((m) => (
                     <div key={`${key}-${m.id}`} className="pdf-block h-full">
                       <ModuleCard module={m} />
@@ -594,7 +594,7 @@ export function ProposalView({
           })
         ) : (
           activations.length > 0 && (
-            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="pdf-two-up mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
               {activations.map((m) => (
                 <div key={m.id} className="pdf-block h-full">
                   <ModuleCard module={m} />

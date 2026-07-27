@@ -32,6 +32,12 @@ export function BuilderNav() {
           </Link>
         )}
         <div className="flex items-center gap-3">
+          <Link
+            href="/builder/deck"
+            className="text-sm font-semibold text-neutral-400 hover:text-neutral-100"
+          >
+            Deck link
+          </Link>
           {!onHome && (
             <Link
               href="/builder/new"

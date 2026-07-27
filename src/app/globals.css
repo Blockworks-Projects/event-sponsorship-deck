@@ -173,6 +173,12 @@
   }
   .pdf-block {
     break-inside: avoid;
+    /* Padding, not margin: a margin is dropped when a box lands at the top
+       of a new page, so a card flowing onto page 2 sat flush against the
+       edge and read as cut off. Padding is part of the box, so it survives
+       the break and every card keeps the same air above it. The grid's own
+       row gap is removed to compensate, leaving mid-page spacing as it was. */
+    padding-top: 1.75rem;
   }
   /* A tier row split across two pages leaves half a sentence on each. */
   .benefit,
@@ -186,6 +192,34 @@
     padding-top: 1.5rem;
     padding-bottom: 1.5rem;
   }
+  /* Activations stay two-up on paper. Left to the md: breakpoint this
+     depends on how wide the print layout happens to be, and a single column
+     stretches each card across the full page.
+     The class is doubled deliberately: Tailwind's own grid-cols-1 has the
+     same specificity as a single class, and its utility layer is emitted
+     after this file — so a single .pdf-two-up loses the cascade and the
+     cards stack anyway. 0-2-0 beats it whatever the order. */
+  .pdf-two-up.pdf-two-up {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 0;
+  }
+
+  /* Chrome's print dialog "Margins: Default" overrides the margin set above
+     and takes roughly 0.4in off each side, leaving ~1163px of the 1240px
+     page. The content column is 1152px plus 40px of padding either side —
+     1232px — so the right-hand edge was being clipped, which is what made
+     the two-up cards look broken.
+     Sized to fit the smaller of the two printable widths so the output is
+     the same whether the dialog says Default or None. Doubled selectors to
+     outrank Tailwind's own utilities. */
+  .max-w-6xl.max-w-6xl {
+    max-width: 1040px;
+  }
+  .px-10.px-10 {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
   /* The proposal's own background stops where its content does, which left
      the foot of the last page bright white against the warm grey above it. */
   html,
