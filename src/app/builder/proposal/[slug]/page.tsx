@@ -102,15 +102,19 @@ export default async function BuilderProposalPage({
             PDF
           </h2>
           <p className="mt-2 text-sm text-neutral-300">
-            The same proposal as a file, for attaching to an email.
+            Opens the proposal and raises your print dialog. Choose
+            &ldquo;Save as PDF&rdquo; as the destination.
           </p>
-          {/* A plain link, not fetch(): the browser handles the download and
-              the wait, and headless Chrome takes a few seconds to render. */}
+          {/* Printed by your own browser rather than rendered on the server:
+              headless Chrome in a serverless container runs out of memory on
+              a proposal this image-heavy, and your machine never will. */}
           <a
-            href={`/api/proposals/${proposal.slug}/pdf`}
+            href={`/p/${proposal.slug}?print=1&autoprint=1`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="mt-3 inline-block bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
           >
-            Download PDF
+            Save as PDF
           </a>
         </section>
 

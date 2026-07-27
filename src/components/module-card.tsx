@@ -23,7 +23,7 @@ export function SlideImage({ module: m }: { module: SponsorshipModule }) {
     // means it renders around 1.3x and stays crisp.
     <div className="mx-auto max-w-[1240px] overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={optimized(m.images[0])} alt={m.title} className="block w-full mix-blend-multiply" />
+      <img src={optimized(m.images[0], 828)} alt={m.title} className="block w-full mix-blend-multiply" />
     </div>
   );
 }

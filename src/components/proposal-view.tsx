@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { ModuleCard } from '@/components/module-card';
 import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
@@ -86,6 +86,7 @@ export function ProposalView({
   tierTables = [],
   deckPages = [],
   skipGate,
+  autoPrint,
 }: {
   proposal: Proposal;
   modules: (SponsorshipModule & { pickedFor?: string | null })[];
@@ -93,6 +94,8 @@ export function ProposalView({
   tierTables?: SponsorshipModule[];
   deckPages?: string[];
   skipGate?: boolean;
+  /** Opened from the builder to print: raise the dialog on arrival. */
+  autoPrint?: boolean;
 }) {
   const [unlocked, setUnlocked] = useState(!!skipGate);
   // After the gate a viewer picks a destination: their own proposal, or the
@@ -103,6 +106,20 @@ export function ProposalView({
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // The rep clicked "Save as PDF" in the builder, which opens this page in a
+  // new tab. Waiting for load means images and webfonts are in before the
+  // dialog freezes the page.
+  useEffect(() => {
+    if (!autoPrint) return;
+    const raise = () => window.print();
+    if (document.readyState === 'complete') {
+      const id = window.setTimeout(raise, 300);
+      return () => window.clearTimeout(id);
+    }
+    window.addEventListener('load', raise);
+    return () => window.removeEventListener('load', raise);
+  }, [autoPrint]);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();
@@ -661,13 +678,13 @@ export function ProposalView({
           )}
 
           {!skipGate && (
-            <a
-              href={`/api/proposals/${proposal.slug}/pdf`}
-              className="mt-12 inline-block px-5 py-3 text-sm font-semibold text-white"
+            <button
+              onClick={() => window.print()}
+              className="print-hide mt-12 inline-block px-5 py-3 text-sm font-semibold text-white"
               style={{ backgroundColor: accent }}
             >
-              Download PDF
-            </a>
+              Save as PDF
+            </button>
           )}
         </div>
       </section>

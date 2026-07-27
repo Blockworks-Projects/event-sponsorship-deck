@@ -144,7 +144,20 @@
    drift from what a sponsor sees on the web. These rules only fix what
    pagination breaks: blocks splitting mid-card, and a screen-height cover
    eating most of page one. */
+/* Printing straight from the browser is the primary way a proposal becomes a
+   PDF, so the printed page is set up here rather than being left to whatever
+   the print dialog defaults to. Margins are zero because the design carries
+   its own; A4 so it matches what a sponsor's printer expects. */
+@page {
+  size: A4;
+  margin: 0;
+}
+
 @media print {
+  /* Anything interactive is meaningless on paper. */
+  .print-hide {
+    display: none !important;
+  }
   .pdf-block {
     break-inside: avoid;
   }

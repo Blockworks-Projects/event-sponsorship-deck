@@ -13,10 +13,10 @@ export default async function ProposalPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ print?: string }>;
+  searchParams: Promise<{ print?: string; autoprint?: string }>;
 }) {
   const { slug } = await params;
-  const { print } = await searchParams;
+  const { print, autoprint } = await searchParams;
 
   // A signed-in Blockworks rep previewing their own work gets a way back to
   // the builder. A sponsor has no cookie, so they never see it — and it isn't
@@ -93,6 +93,7 @@ export default async function ProposalPage({
         tierTable={tierTable}
         tierTables={(tierTables ?? []) as SponsorshipModule[]}
         skipGate={print === '1'}
+        autoPrint={autoprint === '1'}
       />
     </>
   );

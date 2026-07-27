@@ -5,6 +5,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import puppeteer, { type Browser } from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+import { supabase } from '@/lib/supabase';
+
+/**
+ * Rendered PDFs are cached here, keyed by the proposal's last edit. Rendering
+ * is the expensive and fragile part — headless Chrome in a small container —
+ * so it should happen once per version of a proposal, not once per download.
+ * A sponsor opening the same link three times never triggers a render.
+ */
+const PDF_BUCKET = 'proposal-pdfs';
 
 /** Wide enough for the max-w-6xl content column, at A4's 1:1.414 ratio. */
 const PAGE_WIDTH = 1240;
@@ -31,9 +40,17 @@ async function launch(keepSingleProcess: boolean): Promise<Browser> {
   // because a local Chrome is not launched with the flag. The package keeps
   // it to dodge a `prctl(PR_SET_NO_NEW_PRIVS)` error, but --no-sandbox and
   // --no-zygote (both also set) already cover that here.
-  const args = keepSingleProcess
+  const base = keepSingleProcess
     ? chromium.args
     : chromium.args.filter((flag) => flag !== '--single-process');
+
+  // /dev/shm is ~64 MB in a container. Chrome puts rasterized tiles there
+  // while printing, and when it fills the renderer dies mid-print — which
+  // surfaces as "Target closed" from Page.printToPDF. This makes it use
+  // regular temp files instead. The package doesn't set it.
+  const args = base.includes('--disable-dev-shm-usage')
+    ? base
+    : [...base, '--disable-dev-shm-usage'];
 
   // The binary it ships is Linux x64, which is what Vercel runs but not what
   // a Mac can spawn (ENOEXEC). Locally, use whatever Chrome is installed so
@@ -98,11 +115,40 @@ async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Ui
   }
 }
 
+function pdfResponse(bytes: Uint8Array, slug: string, cached: boolean) {
+  return new NextResponse(Buffer.from(bytes), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${slug}.pdf"`,
+      // Handy when a render is being blamed for something it didn't do.
+      'X-Pdf-Cache': cached ? 'hit' : 'miss',
+    },
+  });
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
   const targetUrl = `${baseUrl}/p/${slug}?print=1`;
+
+  // Keyed on updated_at, so editing a proposal produces a new key and the
+  // next download re-renders. No cache to invalidate by hand.
+  const { data: proposal } = await supabase
+    .from('proposals')
+    .select('updated_at')
+    .eq('slug', slug)
+    .single();
+  const cacheKey = proposal
+    ? `${slug}/${new Date(proposal.updated_at).getTime()}.pdf`
+    : null;
+
+  if (cacheKey) {
+    const { data: cached } = await supabase.storage.from(PDF_BUCKET).download(cacheKey);
+    if (cached) {
+      return pdfResponse(new Uint8Array(await cached.arrayBuffer()), slug, true);
+    }
+  }
 
   // Chrome in a serverless container is genuinely flaky — it dies on cold
   // starts and under memory pressure in ways that succeed on a second run.
@@ -115,14 +161,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       // Chrome starting at all on some future runtime, the retry recovers
       // instead of repeating the same failure.
       const pdf = await render(targetUrl, attempt === 1);
-      return new NextResponse(Buffer.from(pdf), {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${slug}.pdf"`,
-        },
-      });
+
+      // Stored before returning, but never at the cost of the download: if
+      // the upload fails the sponsor still gets their file.
+      if (cacheKey) {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        if (!buckets?.some((b) => b.name === PDF_BUCKET)) {
+          await supabase.storage.createBucket(PDF_BUCKET, { public: false });
+        }
+        await supabase.storage
+          .from(PDF_BUCKET)
+          .upload(cacheKey, pdf, { contentType: 'application/pdf', upsert: true })
+          .catch(() => undefined);
+      }
+
+      return pdfResponse(pdf, slug, false);
     } catch (err) {
       lastError = err;
+    }
+  }
+
+  // Last resort: an older render of this proposal, if there is one. A PDF
+  // from before the most recent edit beats an error page in front of a
+  // sponsor, and the rep can re-download once a render succeeds.
+  const { data: previous } = await supabase.storage
+    .from(PDF_BUCKET)
+    .list(slug, { sortBy: { column: 'name', order: 'desc' }, limit: 1 });
+  if (previous?.length) {
+    const { data: stale } = await supabase.storage
+      .from(PDF_BUCKET)
+      .download(`${slug}/${previous[0].name}`);
+    if (stale) {
+      return pdfResponse(new Uint8Array(await stale.arrayBuffer()), slug, true);
     }
   }
 
