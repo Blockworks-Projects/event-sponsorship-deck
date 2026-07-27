@@ -156,6 +156,7 @@ export function ProposalView({
   const showKiosk = londonInScope && proposal.include_kiosk !== false;
   const kioskAccent = EVENT_ACCENT.london;
 
+
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
   const gateAccent = gateBothEvents
@@ -318,6 +319,12 @@ export function ProposalView({
   const EVENTS_IN_ORDER = ['asia', 'london'];
   const sessions =
     proposal.content_sessions ?? (proposal.content_session ? [proposal.content_session] : []);
+  // On a both-events proposal each city's content session is rendered inside
+  // this section, so a proposal with a session but no activations still has
+  // something to show under the heading.
+  const hasPartnershipContent =
+    activations.length > 0 ||
+    (bothEvents && sessions.some((sn) => sn.event && EVENTS_IN_ORDER.includes(sn.event)));
 
   return (
     <div className="bg-[#fafafa] text-neutral-900">
@@ -516,6 +523,10 @@ export function ProposalView({
         </section>
       )}
 
+      {/* A Gold proposal can legitimately have no activations — the tier and
+          its kiosk are the offer — and a heading with nothing under it reads
+          as a page that failed to load. */}
+      {hasPartnershipContent && (
       <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">
         <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: accent }}>
           Your Partnership
@@ -571,6 +582,7 @@ export function ProposalView({
           )
         )}
       </section>
+      )}
 
       {showKiosk && (
         <section className="mx-auto max-w-6xl px-10 pb-8 pt-8">

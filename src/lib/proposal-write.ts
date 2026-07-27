@@ -177,3 +177,30 @@ export function picksFrom(input: ProposalInput) {
   if (input.modules?.length) return input.modules;
   return (input.moduleIds ?? []).map((moduleId) => ({ moduleId }));
 }
+
+/**
+ * A proposal may carry no activations only when every tier on it is Gold —
+ * the one tier sold without one. Enforced here as well as in the builder, so
+ * the rule holds for anything else that ever posts to this API.
+ */
+export function allowsNoModules(input: ProposalInput): boolean {
+  const tiers = input.tiers
+    ? Object.values(input.tiers)
+    : input.tier
+      ? [input.tier]
+      : [];
+  return tiers.length > 0 && tiers.every((t) => (t || '').toLowerCase() === 'gold');
+}
+
+/**
+ * The fields a proposal cannot be sent without: who it's for, who to talk to,
+ * and the address that unlocks the page. Returns a message, or null when fine.
+ */
+export function missingRequiredField(input: ProposalInput): string | null {
+  if (!input.company?.trim()) return 'A company is required.';
+  if (!input.contactName?.trim()) return 'A contact name is required.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((input.contactEmail ?? '').trim())) {
+    return 'A valid contact email is required. It is the address that unlocks the proposal.';
+  }
+  return null;
+}

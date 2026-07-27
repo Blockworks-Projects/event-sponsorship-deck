@@ -6,7 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
-import { proposalColumns, replaceModules, picksFrom, type ProposalInput } from '@/lib/proposal-write';
+import {
+  proposalColumns,
+  replaceModules,
+  picksFrom,
+  allowsNoModules,
+  missingRequiredField,
+  type ProposalInput,
+} from '@/lib/proposal-write';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   if (!readSessionToken(req.cookies.get(BUILDER_COOKIE_NAME)?.value ?? '')) {
@@ -17,9 +24,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   const input = (await req.json()) as ProposalInput;
 
   const picks = picksFrom(input);
-  if (!input.company || !picks.length) {
+  const missing = missingRequiredField(input);
+  if (missing) {
+    return NextResponse.json({ error: missing }, { status: 400 });
+  }
+  if (!picks.length && !allowsNoModules(input)) {
     return NextResponse.json(
-      { error: 'company and at least one module are required.' },
+      { error: 'At least one module is required, except on a Gold tier.' },
       { status: 400 }
     );
   }

@@ -96,8 +96,8 @@ export function ProposalForm({
   const [logoUrl, setLogoUrl] = useState(existing?.logo_url ?? '');
   const [logoUploading, setLogoUploading] = useState(false);
   const [introNote, setIntroNote] = useState(existing?.intro_note ?? '');
-  // London tiers include a kiosk, so yes is the default. A sponsor who takes
-  // additional tickets instead gets that section on the proposal instead.
+  // London tiers include a kiosk, so yes is the default. Off simply drops
+  // the section from the proposal.
   const [includeKiosk, setIncludeKiosk] = useState(existing?.include_kiosk !== false);
   // Matches the eventFilter default, so the two can't start out of step.
   const [event, setEvent] = useState<string>(existing?.event ?? 'london');
@@ -340,7 +340,22 @@ export function ProposalForm({
     if (!company.trim()) return setError('Company is required.');
     // Autofill has put a rep's own address in here before now.
     if (/@/.test(company)) return setError('Company looks like an email address. Check the field.');
-    if (!cart.length) return setError('Add at least one activation.');
+    // Gold is the one tier sold without activations, so it's the one case
+    // where an empty proposal is legitimate. Checked per event, so a
+    // both-events proposal can be Gold in one city and not the other.
+    const eventsMissingActivations = scopedEvents.filter(
+      (key) => !cart.some((k) => cartEvent(k) === key)
+    );
+    const notGold = eventsMissingActivations.filter(
+      (key) => (tierAt(key) || '').toLowerCase() !== 'gold'
+    );
+    if (notGold.length) {
+      const where = bothEvents
+        ? ` for ${notGold.map((k) => EVENTS.find((e) => e.key === k)?.label ?? k).join(' and ')}`
+        : '';
+      return setError(`Add at least one activation${where}. Only Gold can go without.`);
+    }
+    if (!contactName.trim()) return setError('A contact name is required.');
     // Required, because it's now the key: the proposal page only opens for
     // this address. A blank one would leave the link open to anyone.
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
@@ -711,7 +726,7 @@ export function ProposalForm({
         <StepPanel title="Sponsor details" hint={`${cart.length} activations selected`}>
           <div className="grid gap-x-10 md:grid-cols-2">
             <div>
-              <Fieldset label="Company">
+              <Fieldset label="Company" required>
                 <Input
                   name="sponsor-company"
                   autoComplete="off"
@@ -720,7 +735,7 @@ export function ProposalForm({
                   onChange={(e) => setCompany(e.target.value)}
                 />
               </Fieldset>
-              <Fieldset label="Contact name">
+              <Fieldset label="Contact name" required>
                 <Input
                   name="sponsor-contact-name"
                   autoComplete="off"
@@ -731,6 +746,7 @@ export function ProposalForm({
               <Fieldset
                 label="Contact email"
                 hint="The proposal page only opens for this address."
+                required
               >
                 <Input
                   name="sponsor-contact-email"
@@ -950,7 +966,7 @@ export function ProposalForm({
               {(event === 'london' || event === 'both') && (
                 <Fieldset
                   label="Kiosk"
-                  hint="Included in London tiers. Off means additional tickets instead."
+                  hint="Included in London tiers. Off leaves it off the proposal."
                 >
                   <div className="flex gap-2">
                     <Choice selected={includeKiosk} onClick={() => setIncludeKiosk(true)}>
@@ -1043,10 +1059,12 @@ function StepPanel({
 function Fieldset({
   label,
   hint,
+  required,
   children,
 }: {
   label: string;
   hint?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -1054,6 +1072,8 @@ function Fieldset({
       <div className="mb-2 flex items-baseline gap-3">
         <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
           {label}
+          {/* Marked up front rather than only failing on submit. */}
+          {required && <span className="ml-1 text-neutral-500">*</span>}
         </span>
         {hint && <span className="text-xs text-neutral-600">{hint}</span>}
       </div>
