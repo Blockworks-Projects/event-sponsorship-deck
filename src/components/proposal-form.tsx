@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { speakerRole, type SponsorshipModule, type ContentSession, type SessionSpeaker, type Proposal } from '@/lib/types';
-import { applyDiscount, describeDiscount, parsePrice, formatPrice } from '@/lib/pricing';
+import { parsePrice, formatPrice } from '@/lib/pricing';
 
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
@@ -104,13 +104,25 @@ export function ProposalForm({
   const [sponsorTier, setSponsorTier] = useState(existing?.tier ?? '');
   // Both-events proposals buy a tier at each, and they can differ.
   const [tiersByEvent, setTiersByEvent] = useState<Record<string, string>>(existing?.tiers ?? {});
-  const [totalOverride, setTotalOverride] = useState(existing?.total_override ?? '');
-  const [discountValue, setDiscountValue] = useState(
-    String(existing?.discount_percent ?? existing?.discount_amount ?? '')
+  // Standard pricing is the norm; custom is the exception, so it's the one
+  // behind a toggle. Reopening a proposal that was priced custom starts on
+  // custom, or the rep would have to set it again to change one number.
+  const [pricingMode, setPricingMode] = useState<'standard' | 'custom'>(
+    existing?.price_lines?.some((line) => line.discount) ||
+      existing?.discount_amount ||
+      existing?.discount_percent
+      ? 'custom'
+      : 'standard'
   );
-  const [discountUnit, setDiscountUnit] = useState<'percent' | 'amount'>(
-    existing?.discount_amount ? 'amount' : 'percent'
+  /** What's actually being charged per event, keyed by event. */
+  const [eventPrices, setEventPrices] = useState<Record<string, string>>(
+    Object.fromEntries(
+      (existing?.price_lines ?? [])
+        .filter((line) => line.net)
+        .map((line) => [line.event, String(parsePrice(line.net) ?? '')])
+    )
   );
+
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,11 +227,39 @@ export function ProposalForm({
     : tierTable && sponsorTier
     ? tierTable.pricing[sponsorTier.toLowerCase()]
     : null;
-  const discount = {
-    percent: discountUnit === 'percent' ? Number(discountValue) || null : null,
-    amount: discountUnit === 'amount' ? Number(discountValue) || null : null,
+
+  /**
+   * One line per event being bought — both cities on a multi-event proposal,
+   * the single city otherwise — so custom pricing works the same either way.
+   */
+  const chargeLines = bothEvents
+    ? priceLines.map((line) => ({ key: line.key, label: line.label, tier: line.tier, list: line.price }))
+    : event && sponsorTier
+    ? [{ key: event, label: EVENTS.find((e) => e.key === event)?.label ?? event, tier: sponsorTier, list: listPrice }]
+    : [];
+
+  /** What each event is actually being charged, honouring custom pricing. */
+  const chargedFor = (line: { key: string; list: string | null }) => {
+    if (pricingMode !== 'custom') return parsePrice(line.list);
+    const typed = parsePrice(eventPrices[line.key] ?? '');
+    return typed ?? parsePrice(line.list);
   };
-  const discountedPrice = applyDiscount(listPrice, discount);
+
+  const chargedTotal = chargeLines.reduce<number | null>((sum, line) => {
+    const value = chargedFor(line);
+    return value === null ? sum : (sum ?? 0) + value;
+  }, null);
+
+  const listTotalValue = parsePrice(listPrice);
+  // Only a genuine reduction is a discount; typing the standard price back in
+  // shouldn't put a struck-through line on the sponsor's proposal.
+  const discountedPrice =
+    pricingMode === 'custom' &&
+    chargedTotal !== null &&
+    listTotalValue !== null &&
+    chargedTotal < listTotalValue
+      ? formatPrice(chargedTotal)
+      : null;
 
   /**
    * Which stage a tier's speaking slot is on at a given event, read off that
@@ -376,9 +416,7 @@ export function ProposalForm({
           createdByName,
           tier: bothEvents ? undefined : sponsorTier || undefined,
           tiers: bothEvents ? tiersByEvent : undefined,
-          totalOverride: totalOverride || undefined,
-          discountPercent: discount.percent ?? undefined,
-          discountAmount: discount.amount ?? undefined,
+          eventPrices: pricingMode === 'custom' ? eventPrices : undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
           includeKiosk,
@@ -576,14 +614,14 @@ export function ProposalForm({
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
             <Button onClick={() => setStep(contentOffered ? 2 : 3)}>
-              {contentOffered ? 'Content session' : 'Sponsor details'}
+              {contentOffered ? 'Content Proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
       )}
 
       {step === 2 && contentOffered && (
-        <StepPanel title="Content session" hint="Optional">
+        <StepPanel title="Content Proposal" hint="Optional">
           {sessionEvents.map((key) => {
             const label = EVENTS.find((e) => e.key === key)?.label ?? key;
             const draft = draftFor(key);
@@ -593,7 +631,7 @@ export function ProposalForm({
             return (
               <div key={key} className="mb-8 border-b border-neutral-800 pb-6 last:border-0">
                 <Fieldset
-                  label={bothEvents ? `${label} content session?` : 'Include a content session?'}
+                  label={bothEvents ? `${label} content proposal?` : 'Include a content proposal?'}
                 >
                   <div className="flex gap-2">
                     <Choice
@@ -626,7 +664,7 @@ export function ProposalForm({
                         value={draft.description}
                         onChange={(e) => setDraft(key, { description: e.target.value })}
                         rows={3}
-                        placeholder="Blockworks will work with Uniswap to build a bespoke content session which features Uniswap alongside a tier-1 institutional partner. Initial proposal below:"
+                        placeholder="Blockworks will work with Uniswap to build a bespoke content proposal which features Uniswap alongside a tier-1 institutional partner. Initial proposal below:"
                         className="w-full resize-y border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600"
                       />
                     </Fieldset>
@@ -890,33 +928,54 @@ export function ProposalForm({
                 </Fieldset>
               )}
 
-              <Fieldset label="Discount">
+              <Fieldset label="Pricing">
                 <div className="flex gap-2">
-                  <Input
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                    placeholder="Leave blank for none"
-                    inputMode="decimal"
-                    className="flex-1"
-                  />
-                  <div className="flex overflow-hidden border border-neutral-700">
-                    {(['percent', 'amount'] as const).map((unit) => (
-                      <button
-                        key={unit}
-                        type="button"
-                        onClick={() => setDiscountUnit(unit)}
-                        className={`px-3 text-sm ${
-                          discountUnit === unit
-                            ? 'bg-neutral-200 font-semibold text-neutral-900'
-                            : 'text-neutral-400 hover:text-neutral-200'
-                        }`}
-                      >
-                        {unit === 'percent' ? '%' : '$'}
-                      </button>
-                    ))}
-                  </div>
+                  {(['standard', 'custom'] as const).map((mode) => (
+                    <Choice
+                      key={mode}
+                      selected={pricingMode === mode}
+                      // Deliberately no prefill: an empty box lets the
+                      // placeholder show the standard price, and a blank field
+                      // already means "charge the standard price".
+                      onClick={() => setPricingMode(mode)}
+                    >
+                      {mode === 'standard' ? 'Standard pricing' : 'Custom pricing'}
+                    </Choice>
+                  ))}
                 </div>
               </Fieldset>
+
+              {pricingMode === 'custom' && chargeLines.length > 0 && (
+                <Fieldset label="Update the cost">
+                  <div className="space-y-2">
+                    {chargeLines.map((line) => (
+                      <div key={line.key} className="flex items-center gap-3">
+                        <span className="w-40 shrink-0 text-sm text-neutral-400">
+                          {line.label} · {line.tier}
+                        </span>
+                        {/* The standard price as placeholder: it shows what
+                            they'd charge if they left it alone, and vanishes
+                            the moment they type. Written out in full — the
+                            tier tables say "$125K", but a field you're about
+                            to type a real figure into should read $125,000. */}
+                        <Input
+                          value={eventPrices[line.key] ?? ''}
+                          onChange={(e) =>
+                            setEventPrices((current) => ({ ...current, [line.key]: e.target.value }))
+                          }
+                          placeholder={
+                            parsePrice(line.list) !== null
+                              ? formatPrice(parsePrice(line.list) as number)
+                              : ''
+                          }
+                          inputMode="decimal"
+                          className="flex-1"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </Fieldset>
+              )}
 
               {listPrice && (
                 <div className="mb-6 bg-neutral-800 px-3 py-2 text-sm">
@@ -932,34 +991,19 @@ export function ProposalForm({
                     } text-neutral-400`}
                   >
                     <span>{priceLines.length ? 'Combined' : 'Standard'}</span>
-                    <span className={discountedPrice || totalOverride ? 'line-through' : undefined}>
+                    <span className={discountedPrice ? 'line-through' : undefined}>
                       {listPrice}
                     </span>
                   </div>
                   {discountedPrice && (
                     <div className="mt-1 flex justify-between font-semibold text-white">
-                      <span>After {describeDiscount(discount)}</span>
-                      <span className={totalOverride ? 'line-through' : undefined}>
-                        {discountedPrice}
-                      </span>
-                    </div>
-                  )}
-                  {totalOverride && (
-                    <div className="mt-1 flex justify-between font-semibold text-white">
-                      <span>Quoted</span>
-                      <span>{totalOverride}</span>
+                      <span>Custom pricing</span>
+                      <span>{discountedPrice}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              <Fieldset label="Override the total" hint="Optional. For a bundled deal.">
-                <Input
-                  value={totalOverride}
-                  onChange={(e) => setTotalOverride(e.target.value)}
-                  placeholder="e.g. $200,000"
-                />
-              </Fieldset>
 
               {/* Asia's tiers have no kiosk, so the question only makes
                   sense when London is in scope. */}
@@ -982,6 +1026,7 @@ export function ProposalForm({
               <Fieldset
                 label="Note to the sponsor"
                 hint="Write in any bonus here. Shown under the tier grid, signed with your name."
+                stackHint
               >
                 <textarea
                   value={introNote}
@@ -1060,22 +1105,27 @@ function Fieldset({
   label,
   hint,
   required,
+  stackHint,
   children,
 }: {
   label: string;
   hint?: string;
   required?: boolean;
+  /** Hint on its own line beneath the label, for hints too long to sit beside it. */
+  stackHint?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="mb-6">
-      <div className="mb-2 flex items-baseline gap-3">
+      <div className={`mb-2 ${stackHint ? '' : 'flex items-baseline gap-3'}`}>
         <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
           {label}
           {/* Marked up front rather than only failing on submit. */}
           {required && <span className="ml-1 text-neutral-500">*</span>}
         </span>
-        {hint && <span className="text-xs text-neutral-600">{hint}</span>}
+        {hint && (
+          <span className={`text-xs text-neutral-600${stackHint ? ' mt-1 block' : ''}`}>{hint}</span>
+        )}
       </div>
       {children}
     </div>

@@ -121,23 +121,60 @@ export async function POST(req: NextRequest) {
  * catalog sync that already succeeded.
  */
 async function syncDeckPages_(sourceUrl: string, token: string): Promise<number> {
+  // Both sponsorship decks. 'das' is the London/Asia master deck and the one
+  // the script serves by default, so it is requested without a deck param.
+  const decks = [
+    { key: 'das', param: '' },
+    { key: 'nyc', param: '&deck=nyc' },
+  ];
+
+  let total = 0;
+  for (const deck of decks) {
+    total += await syncOneDeck_(sourceUrl, token, deck.key, deck.param);
+  }
+  return total;
+}
+
+async function syncOneDeck_(
+  sourceUrl: string,
+  token: string,
+  deckKey: string,
+  param: string
+): Promise<number> {
   try {
-    const res = await fetch(`${sourceUrl}?action=deckPages&token=${encodeURIComponent(token)}`);
+    const res = await fetch(
+      `${sourceUrl}?action=deckPages&token=${encodeURIComponent(token)}${param}`
+    );
     const body = await res.json();
     if (body.error || !Array.isArray(body.pages)) return 0;
 
-    const rows: { page_index: number; image_url: string; updated_at: string }[] = [];
+    const rows: {
+      deck_key: string;
+      page_index: number;
+      image_url: string;
+      updated_at: string;
+    }[] = [];
     for (const page of body.pages) {
-      const [url] = await rehostImages_(`deck/page-${page.index}`, [page.imageUrl]);
+      // Stored per deck, so New York's page 1 can't overwrite the master's.
+      const [url] = await rehostImages_(`deck/${deckKey}/page-${page.index}`, [page.imageUrl]);
       if (url) {
-        rows.push({ page_index: page.index, image_url: url, updated_at: new Date().toISOString() });
+        rows.push({
+          deck_key: deckKey,
+          page_index: page.index,
+          image_url: url,
+          updated_at: new Date().toISOString(),
+        });
       }
     }
     if (!rows.length) return 0;
 
-    await supabase.from('deck_pages').upsert(rows, { onConflict: 'page_index' });
-    // Slides removed from the deck would otherwise linger as pages forever.
-    await supabase.from('deck_pages').delete().gt('page_index', rows.length);
+    await supabase.from('deck_pages').upsert(rows, { onConflict: 'deck_key,page_index' });
+    // Slides removed from that deck would otherwise linger as pages forever.
+    await supabase
+      .from('deck_pages')
+      .delete()
+      .eq('deck_key', deckKey)
+      .gt('page_index', rows.length);
     return rows.length;
   } catch {
     return 0;

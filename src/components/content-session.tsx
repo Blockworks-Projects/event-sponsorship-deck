@@ -1,4 +1,4 @@
-// The bespoke content session, when one has been agreed. Optional: most
+// The bespoke content proposal, when one has been agreed. Optional: most
 // proposals won't have one, and the section simply doesn't render.
 import { speakerRole, type ContentSession as Session } from '@/lib/types';
 
@@ -26,7 +26,7 @@ export function ContentSessionSection({
   return (
     <Wrapper className={nested ? 'mt-8' : 'mx-auto max-w-6xl px-10 py-16'}>
       <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: accent }}>
-        Content Session
+        Content Proposal
         {!nested && session.event && (
           <span className="ml-2 text-neutral-400">{EVENT_LABEL[session.event] ?? session.event}</span>
         )}

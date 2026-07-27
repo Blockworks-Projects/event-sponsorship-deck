@@ -85,6 +85,15 @@ export interface Proposal {
   discounted_price: string | null;
   logo_url: string | null;
   intro_note: string | null;
+  /** Per-event pricing snapshot: what each event lists at and is charged. */
+  price_lines: {
+    event: string;
+    tier: string;
+    list: string | null;
+    net: string | null;
+    discount: string | null;
+  }[] | null;
+  event_discounts: Record<string, { amount: number | null }> | null;
   include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session
   content_sessions: ContentSession[] | null;

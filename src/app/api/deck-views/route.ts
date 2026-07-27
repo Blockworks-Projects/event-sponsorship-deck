@@ -3,9 +3,12 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deckType, proposalId, viewerName, viewerEmail, viewerCompany, sessionId } = body as {
+  const { deckType, proposalId, viewerName, viewerEmail, viewerCompany, sessionId, deckKey } =
+    body as {
     deckType: 'public' | 'proposal';
     proposalId?: string;
+    /** Which sponsorship deck was opened: 'das' or 'nyc'. */
+    deckKey?: string;
     viewerName?: string;
     viewerEmail: string;
     viewerCompany?: string;
@@ -57,6 +60,7 @@ export async function POST(req: NextRequest) {
       proposal_id: proposalId || null,
       viewer_name: viewerName || null,
       viewer_email: address,
+      deck_key: deckKey ?? null,
       viewer_company: viewerCompany || null,
       user_agent: req.headers.get('user-agent'),
       session_id: sessionId || null,

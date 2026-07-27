@@ -128,6 +128,16 @@ export function PriceBreakdown({
     amount: proposal.discount_amount,
   });
 
+  // Priced per event: show each city's own line and its own reduction, since
+  // "Asia discounted, London at full price" is invisible in a single total.
+  const lines = proposal.price_lines ?? [];
+  const perEvent = lines.length > 1;
+  const EVENT_LABEL: Record<string, string> = {
+    london: 'London',
+    asia: 'Asia',
+    nyc: 'New York',
+  };
+
   return (
     <section className="mx-auto max-w-6xl px-10 py-16">
       <h2 className="pdf-keep-with-next text-sm font-bold uppercase tracking-widest" style={{ color: accent }}>
@@ -135,13 +145,27 @@ export function PriceBreakdown({
       </h2>
       <div className="pdf-block mt-4 border border-neutral-200 bg-white px-8 py-6">
         <dl className="divide-y divide-neutral-100">
-          {list !== null && (
-            <div className="flex justify-between gap-6 py-3">
-              <dt className="text-sm text-neutral-700">{proposal.tier} sponsorship</dt>
-              <dd className="text-sm font-semibold text-neutral-900">{formatPrice(list)}</dd>
-            </div>
-          )}
-          {saving !== null && (
+          {perEvent
+            ? lines.map((line) => (
+                <div key={line.event} className="flex justify-between gap-6 py-3">
+                  <dt className="text-sm text-neutral-700">
+                    {EVENT_LABEL[line.event] ?? line.event} · {line.tier}
+                    {line.discount && (
+                      <span className="ml-2 text-neutral-500">
+                        was {line.list}
+                      </span>
+                    )}
+                  </dt>
+                  <dd className="text-sm font-semibold text-neutral-900">{line.net}</dd>
+                </div>
+              ))
+            : list !== null && (
+                <div className="flex justify-between gap-6 py-3">
+                  <dt className="text-sm text-neutral-700">{proposal.tier} sponsorship</dt>
+                  <dd className="text-sm font-semibold text-neutral-900">{formatPrice(list)}</dd>
+                </div>
+              )}
+          {!perEvent && saving !== null && (
             <div className="flex justify-between gap-6 py-3">
               <dt className="text-sm text-neutral-700">
                 Discount{discountLabel ? ` (${discountLabel.replace(/ off$/, '')})` : ''}

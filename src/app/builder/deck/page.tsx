@@ -21,6 +21,12 @@ function formatWhen(iso: string): string {
   return `${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
 }
 
+/** Same labels the sponsor sees on the buttons. */
+const DECK_LABEL: Record<string, string> = {
+  das: 'DAS 2026',
+  nyc: 'DAS 2027',
+};
+
 export default async function DeckLinkPage() {
   const host = (await headers()).get('host') ?? '';
   const origin =
@@ -29,10 +35,10 @@ export default async function DeckLinkPage() {
   const url = `${origin}/sponsorships`;
 
   const [{ data: pages }, { data: viewRows }] = await Promise.all([
-    supabase.from('deck_pages').select('page_index').order('page_index', { ascending: true }),
+    supabase.from('deck_pages').select('deck_key, page_index'),
     supabase
       .from('deck_views')
-      .select('id, viewer_email, started_at')
+      .select('id, viewer_email, started_at, deck_key')
       .eq('deck_type', 'public')
       .order('started_at', { ascending: false })
       .limit(200),
@@ -81,7 +87,14 @@ export default async function DeckLinkPage() {
                     key={v.id}
                     className="flex flex-wrap items-baseline justify-between gap-2 border-b border-neutral-800 pb-2 text-sm last:border-b-0 last:pb-0"
                   >
-                    <span className="text-neutral-200">{v.viewer_email}</span>
+                    <span className="text-neutral-200">
+                      {v.viewer_email}
+                      {v.deck_key && (
+                        <span className="ml-2 text-xs text-neutral-500">
+                          {DECK_LABEL[v.deck_key] ?? v.deck_key}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-xs text-neutral-500">{formatWhen(v.started_at)}</span>
                   </li>
                 ))}
@@ -94,11 +107,25 @@ export default async function DeckLinkPage() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
             Deck
           </h2>
-          <p className="mt-2 text-sm text-neutral-300">
-            {(pages ?? []).length > 0
-              ? `${(pages ?? []).length} pages, from the last sync of the master deck.`
-              : 'No pages synced yet. Run Sync from a proposal page first.'}
-          </p>
+          {(pages ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-neutral-300">
+              No pages synced yet. Run Sync from a proposal page first.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-sm text-neutral-300">
+              {Object.entries(
+                (pages ?? []).reduce<Record<string, number>>((counts, row) => {
+                  const key = row.deck_key ?? 'das';
+                  counts[key] = (counts[key] ?? 0) + 1;
+                  return counts;
+                }, {})
+              ).map(([key, count]) => (
+                <li key={key}>
+                  {DECK_LABEL[key] ?? key}: {count} pages
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </div>

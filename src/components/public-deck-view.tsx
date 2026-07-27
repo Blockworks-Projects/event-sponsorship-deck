@@ -9,11 +9,18 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 
-export function PublicDeckView({ pages, embedUrl }: { pages: string[]; embedUrl?: string }) {
+export interface Deck {
+  key: string;
+  label: string;
+  pages: string[];
+}
+
+export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: string }) {
   const [unlocked, setUnlocked] = useState(false);
+  // Which deck they're reading. Null after the gate means "still choosing".
+  const [openDeck, setOpenDeck] = useState<Deck | null>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();
@@ -22,25 +29,23 @@ export function PublicDeckView({ pages, embedUrl }: { pages: string[]; embedUrl?
       setError('Enter a valid email address.');
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/deck-views', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // No proposalId: this is the deck, so any address may open it. The
-        // address is still recorded, which is the point of the link.
-        body: JSON.stringify({ deckType: 'public', viewerEmail: email }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Something went wrong.');
-      }
-      setUnlocked(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+    // The view is recorded when a deck is opened, not here — otherwise
+    // passing the gate and then picking a deck logs the same person twice and
+    // the counts read double.
+    setUnlocked(true);
+    // One deck needs no choosing.
+    if (decks.length === 1) openOne(decks[0]);
+  }
+
+  /** Records which deck was opened, then shows it. */
+  async function openOne(deck: Deck) {
+    setOpenDeck(deck);
+    // Fire and forget: a failed log shouldn't stand between them and the deck.
+    fetch('/api/deck-views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deckType: 'public', viewerEmail: email, deckKey: deck.key }),
+    }).catch(() => undefined);
   }
 
   if (!unlocked) {
@@ -73,11 +78,10 @@ export function PublicDeckView({ pages, embedUrl }: { pages: string[]; embedUrl?
             {error && <p className="text-sm" style={{ color: 'var(--das-asia)' }}>{error}</p>}
             <button
               type="submit"
-              disabled={submitting}
-              className="px-8 py-4 text-sm font-semibold text-white disabled:opacity-60"
+              className="px-8 py-4 text-sm font-semibold text-white"
               style={{ backgroundColor: 'var(--das-ink)' }}
             >
-              {submitting ? 'Loading…' : 'View deck'}
+              View deck
             </button>
           </form>
         </div>
@@ -85,15 +89,50 @@ export function PublicDeckView({ pages, embedUrl }: { pages: string[]; embedUrl?
     );
   }
 
+  // Past the gate, before a deck: which one do they want.
+  if (!openDeck) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafafa] px-6 text-neutral-900">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/shapes-both.svg" alt="" aria-hidden className="hero-shape hero-shape-both" />
+        <div className="relative w-full max-w-xl text-center">
+          <h1 className="whitespace-nowrap text-[clamp(1.5rem,5.2vw,2.5rem)] font-bold leading-[1.05] tracking-tight">
+            Digital Asset Summit (DAS)
+          </h1>
+          <p className="mt-6 text-lg text-neutral-600">View</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            {decks.map((deck) => (
+              <button
+                key={deck.key}
+                onClick={() => openOne(deck)}
+                className="px-8 py-4 text-sm font-semibold text-white"
+                style={{ backgroundColor: 'var(--das-ink)' }}
+              >
+                {deck.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const pages = openDeck.pages;
+
   return (
     <div className="min-h-screen bg-[#fafafa]">
-      <div className="sticky top-0 z-10 border-b border-neutral-200 bg-[#fafafa]/95 px-6 py-3 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-[#fafafa]/95 px-6 py-3 backdrop-blur">
         <span
           className="text-sm font-semibold uppercase tracking-widest"
           style={{ color: 'var(--das-ink)' }}
         >
-          Digital Asset Summit
+          {openDeck.label}
         </span>
+        {decks.length > 1 && (
+          <button onClick={() => setOpenDeck(null)} className="text-sm font-semibold underline">
+            Other deck
+          </button>
+        )}
       </div>
       {/* Our own rendered pages, scrolling — the same treatment a proposal's
           deck view uses, rather than Google's black-bar embed. */}

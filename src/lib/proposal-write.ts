@@ -20,6 +20,14 @@ export interface ProposalInput {
   totalOverride?: string;
   discountPercent?: number;
   discountAmount?: number;
+  /**
+   * Custom pricing: what is actually being charged per event, e.g.
+   * {asia: '50000'}. Discounting here is nearly always a flat amount off one
+   * event ("50k instead of 60k"), so a rep types the price they're quoting
+   * rather than working out a percentage. Blank or absent means that event
+   * goes at its standard price.
+   */
+  eventPrices?: Record<string, string>;
   logoUrl?: string;
   introNote?: string;
   includeKiosk?: boolean;
@@ -106,20 +114,56 @@ export async function proposalColumns(input: ProposalInput) {
   // Across both events this is the sum of each event's tier price. The
   // formatted string is rebuilt from the total rather than concatenated, so
   // "$125K + $100K" reads as one figure.
-  const prices = await Promise.all(
-    Object.entries(tiers).map(([event, tier]) => standardPriceFor(event, tier))
+  const entries = Object.entries(tiers);
+  const standard = await Promise.all(
+    entries.map(([event, tier]) => standardPriceFor(event, tier))
   );
-  const total = prices.reduce<number | null>((sum, price) => {
-    const value = parsePrice(price);
-    if (value === null) return sum;
-    return (sum ?? 0) + value;
-  }, null);
-  const listPrice = total === null ? null : formatPrice(total);
 
-  const discounted = applyDiscount(listPrice, {
-    percent: input.discountPercent,
-    amount: input.discountAmount,
+  // One line per event: what it lists at, what is being charged, and the
+  // difference. Snapshotted onto the proposal so the quote can't move when
+  // someone edits a tier table months later.
+  const lines = entries.map(([event, tier], i) => {
+    const list = parsePrice(standard[i]);
+    const typed = parsePrice(input.eventPrices?.[event] ?? '');
+    const net = typed ?? list;
+    const off = list !== null && net !== null && list > net ? list - net : null;
+    return {
+      event,
+      tier,
+      list: list === null ? null : formatPrice(list),
+      net: net === null ? null : formatPrice(net),
+      discount: off === null ? null : formatPrice(off),
+    };
   });
+
+  const sum = (pick: (line: (typeof lines)[number]) => string | null) =>
+    lines.reduce<number | null>((running, line) => {
+      const value = parsePrice(pick(line));
+      return value === null ? running : (running ?? 0) + value;
+    }, null);
+
+  const listTotal = sum((line) => line.list);
+  const netTotal = sum((line) => line.net);
+  const listPrice = listTotal === null ? null : formatPrice(listTotal);
+
+  // Only a real reduction counts as a discounted price; otherwise the
+  // proposal shows a "discount" of nothing.
+  const customDiscounted =
+    listTotal !== null && netTotal !== null && netTotal < listTotal ? formatPrice(netTotal) : null;
+
+  // The old single overall discount still applies to anything that sends it.
+  const discounted =
+    customDiscounted ??
+    applyDiscount(listPrice, {
+      percent: input.discountPercent,
+      amount: input.discountAmount,
+    });
+
+  const eventDiscounts = Object.fromEntries(
+    lines
+      .filter((line) => line.discount)
+      .map((line) => [line.event, { amount: parsePrice(line.discount) }])
+  );
 
   // A typed total is a negotiated bundle price and beats the arithmetic.
   const quoted = input.totalOverride?.trim() || discounted || listPrice;
@@ -135,6 +179,8 @@ export async function proposalColumns(input: ProposalInput) {
     total_override: input.totalOverride?.trim() || null,
     discount_percent: input.discountPercent ?? null,
     discount_amount: input.discountAmount ?? null,
+    event_discounts: Object.keys(eventDiscounts).length ? eventDiscounts : null,
+    price_lines: lines.length ? lines : null,
     discounted_price: discounted,
     total_price: quoted,
     created_by: input.createdBy || null,
