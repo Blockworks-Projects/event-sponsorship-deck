@@ -94,7 +94,7 @@ export default async function BuilderHomePage({
               href="/builder/deck"
               className="border border-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-300 hover:border-neutral-500 hover:text-white"
             >
-              Deck link
+              Sponsorship Deck
             </Link>
             <Link
               href="/builder/new"
