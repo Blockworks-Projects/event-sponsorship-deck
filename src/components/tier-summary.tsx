@@ -2,6 +2,7 @@
 // as a picture of the whole grid. An image can't be trimmed, and a proposal
 // should show what THIS sponsor is buying — not four columns of which three
 // are irrelevant.
+import { hidesKioskRow } from '@/lib/kiosk';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 import { describeDiscount, parsePrice, formatPrice } from '@/lib/pricing';
 import { benefitCopy } from '@/lib/benefits';
@@ -76,6 +77,7 @@ export function TierIncluded({
 
   const key = tier.toLowerCase();
   const included = (tierTable?.tier_rows ?? [])
+    .filter((row) => !hidesKioskRow(proposal.include_kiosk, row.label))
     .map((row) => ({ label: row.label, value: row.values[key] }))
     .filter((row) => row.value && !NOT_INCLUDED.test(row.value.trim()));
 

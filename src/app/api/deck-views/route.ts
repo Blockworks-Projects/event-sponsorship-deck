@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { emailList, isAddressedTo } from '@/lib/contacts';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -34,18 +35,19 @@ export async function POST(req: NextRequest) {
       .eq('id', proposalId)
       .single();
 
-    const expected = (proposal?.contact_email ?? '').trim().toLowerCase();
+    // A proposal can be addressed to several people; any of them may open it.
+    const expected = emailList(proposal?.contact_email);
     // No contact address means nothing to check against, and letting it
     // through would make an unaddressed proposal the one anybody can open.
     // The builder now requires one, so this is only reachable for rows
     // created before that.
-    if (!expected) {
+    if (!expected.length) {
       return NextResponse.json(
         { error: 'This proposal has no contact address set yet. Ask your Blockworks contact.' },
         { status: 403 }
       );
     }
-    if (expected !== address) {
+    if (!isAddressedTo(proposal?.contact_email, address)) {
       return NextResponse.json(
         { error: "That address doesn't match the one this proposal was sent to." },
         { status: 403 }

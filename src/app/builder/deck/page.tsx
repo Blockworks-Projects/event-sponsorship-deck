@@ -34,15 +34,12 @@ export default async function DeckLinkPage() {
     `${host.startsWith('localhost') ? 'http' : 'https'}://${host}`;
   const url = `${origin}/sponsorships`;
 
-  const [{ data: pages }, { data: viewRows }] = await Promise.all([
-    supabase.from('deck_pages').select('deck_key, page_index'),
-    supabase
-      .from('deck_views')
-      .select('id, viewer_email, started_at, deck_key')
-      .eq('deck_type', 'public')
-      .order('started_at', { ascending: false })
-      .limit(200),
-  ]);
+  const { data: viewRows } = await supabase
+    .from('deck_views')
+    .select('id, viewer_email, started_at, deck_key')
+    .eq('deck_type', 'public')
+    .order('started_at', { ascending: false })
+    .limit(200);
 
   const views = viewRows ?? [];
   const uniqueViewers = new Set(views.map((v) => v.viewer_email)).size;
@@ -103,30 +100,6 @@ export default async function DeckLinkPage() {
           )}
         </section>
 
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Deck
-          </h2>
-          {(pages ?? []).length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-300">
-              No pages synced yet. Run Sync from a proposal page first.
-            </p>
-          ) : (
-            <ul className="mt-2 space-y-1 text-sm text-neutral-300">
-              {Object.entries(
-                (pages ?? []).reduce<Record<string, number>>((counts, row) => {
-                  const key = row.deck_key ?? 'das';
-                  counts[key] = (counts[key] ?? 0) + 1;
-                  return counts;
-                }, {})
-              ).map(([key, count]) => (
-                <li key={key}>
-                  {DECK_LABEL[key] ?? key}: {count} pages
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
     </div>
   );

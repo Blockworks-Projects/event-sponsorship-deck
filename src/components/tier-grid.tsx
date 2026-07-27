@@ -2,6 +2,7 @@
 // column per city, so a sponsor sees what each buys them side by side rather
 // than reading two separate tables and comparing.
 import { benefitCopy } from '@/lib/benefits';
+import { hidesKioskRow } from '@/lib/kiosk';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
 /** Cells that mean "this tier doesn't get it" on the source table. */
@@ -59,6 +60,7 @@ export function TierGrid({
   const labels: string[] = [];
   columns.forEach((column) => {
     (column.table?.tier_rows ?? []).forEach((row) => {
+      if (hidesKioskRow(proposal.include_kiosk, row.label)) return;
       if (!labels.includes(row.label)) labels.push(row.label);
     });
   });

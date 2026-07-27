@@ -3,6 +3,7 @@
 // applying the moment someone edited.
 import { supabase } from '@/lib/supabase';
 import { applyDiscount, parsePrice, formatPrice } from '@/lib/pricing';
+import { validEmailList } from '@/lib/contacts';
 import type { ContentSession } from '@/lib/types';
 
 const HEADSHOT_BUCKET = 'session-speakers';
@@ -245,7 +246,7 @@ export function allowsNoModules(input: ProposalInput): boolean {
 export function missingRequiredField(input: ProposalInput): string | null {
   if (!input.company?.trim()) return 'A company is required.';
   if (!input.contactName?.trim()) return 'A contact name is required.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((input.contactEmail ?? '').trim())) {
+  if (!validEmailList(input.contactEmail)) {
     return 'A valid contact email is required. It is the address that unlocks the proposal.';
   }
   return null;

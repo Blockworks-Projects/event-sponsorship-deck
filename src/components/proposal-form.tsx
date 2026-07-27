@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { speakerRole, type SponsorshipModule, type ContentSession, type SessionSpeaker, type Proposal } from '@/lib/types';
 import { parsePrice, formatPrice } from '@/lib/pricing';
+import { validEmailList } from '@/lib/contacts';
 
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
@@ -96,6 +97,54 @@ export function ProposalForm({
   const [logoUrl, setLogoUrl] = useState(existing?.logo_url ?? '');
   const [logoUploading, setLogoUploading] = useState(false);
   const [introNote, setIntroNote] = useState(existing?.intro_note ?? '');
+
+  /**
+   * Sponsors we already know about, from the ACCOUNTS table in Airtable.
+   * Picking one fills the contact and logo; everything stays editable, and
+   * typing a company that isn't on the list is still fine — plenty of records
+   * have no handler or logo anyway.
+   */
+  const [accounts, setAccounts] = useState<
+    { id: string; name: string; contactName?: string; contactEmail?: string; logoUrl?: string }[]
+  >([]);
+  const [appliedAccount, setAppliedAccount] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/accounts')
+      .then((res) => res.json())
+      .then((body) => {
+        if (!cancelled && Array.isArray(body.accounts)) setAccounts(body.accounts);
+      })
+      // A failed account list shouldn't block making a proposal by hand.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Fill what the account knows, leaving anything it doesn't know alone. */
+  async function applyAccount(account: (typeof accounts)[number]) {
+    setAppliedAccount(account.id);
+    setCompany(account.name);
+    if (account.contactName) setContactName(account.contactName);
+    if (account.contactEmail) setContactEmail(account.contactEmail);
+    if (account.logoUrl) {
+      // Airtable's URL expires within hours, so it's copied to our own
+      // storage now rather than saved as-is.
+      try {
+        const res = await fetch('/api/logo/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: account.logoUrl }),
+        });
+        const body = await res.json();
+        if (res.ok && body.url) setLogoUrl(body.url);
+      } catch {
+        // A missing logo is a cosmetic loss; the rep can upload one.
+      }
+    }
+  }
   // London tiers include a kiosk, so yes is the default. Off simply drops
   // the section from the proposal.
   const [includeKiosk, setIncludeKiosk] = useState(existing?.include_kiosk !== false);
@@ -398,7 +447,7 @@ export function ProposalForm({
     if (!contactName.trim()) return setError('A contact name is required.');
     // Required, because it's now the key: the proposal page only opens for
     // this address. A blank one would leave the link open to anyone.
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
+    if (!validEmailList(contactEmail)) {
       return setError('A contact email is required. It is the address that unlocks the proposal.');
     }
 
@@ -764,14 +813,38 @@ export function ProposalForm({
         <StepPanel title="Sponsor details" hint={`${cart.length} activations selected`}>
           <div className="grid gap-x-10 md:grid-cols-2">
             <div>
-              <Fieldset label="Company" required>
+              <Fieldset
+                label="Company"
+                required
+                hint={accounts.length ? 'Pick an existing sponsor, or type a new one.' : undefined}
+              >
+                {/* A datalist rather than a select: the rep can still type a
+                    company that isn't an account yet, which is the whole
+                    point of "or add someone new". */}
                 <Input
                   name="sponsor-company"
                   autoComplete="off"
+                  list="sponsor-accounts"
                   placeholder="e.g. Uniswap"
                   value={company}
-                  onChange={(e) => setCompany(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCompany(value);
+                    const match = accounts.find(
+                      (a) => a.name.toLowerCase() === value.trim().toLowerCase()
+                    );
+                    // Only on the transition into an account, so a rep who
+                    // corrects the contact afterwards doesn't have it
+                    // overwritten by their next keystroke.
+                    if (match && match.id !== appliedAccount) applyAccount(match);
+                    if (!match) setAppliedAccount(null);
+                  }}
                 />
+                <datalist id="sponsor-accounts">
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.name} />
+                  ))}
+                </datalist>
               </Fieldset>
               <Fieldset label="Contact name" required>
                 <Input

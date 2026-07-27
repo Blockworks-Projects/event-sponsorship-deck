@@ -99,7 +99,9 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
           <h1 className="whitespace-nowrap text-[clamp(1.5rem,5.2vw,2.5rem)] font-bold leading-[1.05] tracking-tight">
             Digital Asset Summit (DAS)
           </h1>
-          <p className="mt-6 text-lg text-neutral-600">View</p>
+          <p className="mt-6 text-pretty text-lg text-neutral-600">
+            Click which Sponsorship Deck you would like to view
+          </p>
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             {decks.map((deck) => (
               <button
@@ -128,11 +130,21 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
         >
           {openDeck.label}
         </span>
-        {decks.length > 1 && (
-          <button onClick={() => setOpenDeck(null)} className="text-sm font-semibold underline">
-            Other deck
-          </button>
-        )}
+        {/* Named, not "other deck": with two decks the name is shorter than
+            the description, and it says where the click goes. */}
+        <div className="flex gap-2">
+          {decks
+            .filter((deck) => deck.key !== openDeck.key)
+            .map((deck) => (
+              <button
+                key={deck.key}
+                onClick={() => openOne(deck)}
+                className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+              >
+                {deck.label}
+              </button>
+            ))}
+        </div>
       </div>
       {/* Our own rendered pages, scrolling — the same treatment a proposal's
           deck view uses, rather than Google's black-bar embed. */}

@@ -22,17 +22,25 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(searchParams.get('error'));
   const [loading, setLoading] = useState(false);
 
-  /** A password signs you straight in; without one, a link goes to the inbox. */
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  /**
+   * Two ways in, chosen by which button was pressed rather than by whether
+   * the password box happens to be filled: a rep who types a password and
+   * then decides to use the link shouldn't have to clear the field first.
+   */
+  async function signIn(mode: 'password' | 'link') {
     setLoading(true);
     setError(null);
+
+    if (mode === 'password' && !password) {
+      setLoading(false);
+      return setError('Enter the team password, or use the magic link instead.');
+    }
 
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(password ? { email, password } : { email }),
+        body: JSON.stringify(mode === 'password' ? { email, password } : { email }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Something went wrong.');
@@ -73,7 +81,14 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          // Enter in a field does the obvious thing rather than nothing.
+          signIn(password ? 'password' : 'link');
+        }}
+        className="w-full max-w-sm space-y-4"
+      >
         <div>
           <h1 className="text-xl font-semibold text-neutral-50">Proposal Builder</h1>
           <p className="mt-1 text-sm text-neutral-400">
@@ -103,9 +118,25 @@ function LoginForm() {
           />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
-        <Button type="submit" disabled={loading} className="w-full">
-          {loading ? (password ? 'Signing in…' : 'Sending…') : password ? 'Sign in' : 'Email me a link'}
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            type="button"
+            onClick={() => signIn('password')}
+            disabled={loading}
+            className="flex-1"
+          >
+            Log in
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => signIn('link')}
+            disabled={loading}
+            className="flex-1"
+          >
+            Magic link
+          </Button>
+        </div>
       </form>
     </div>
   );

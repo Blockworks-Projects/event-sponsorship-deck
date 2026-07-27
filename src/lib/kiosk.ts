@@ -17,3 +17,12 @@ export const KIOSK = {
     'Integrated 42" screen for live demos, presentations, and video content',
   ],
 };
+
+/**
+ * The tier tables list "Branded Kiosk (2 Days)" as a tier benefit. When a
+ * sponsor isn't taking the kiosk, that row would contradict the rest of the
+ * proposal, which drops the kiosk section entirely.
+ */
+export function hidesKioskRow(includeKiosk: boolean | null | undefined, label: string): boolean {
+  return includeKiosk === false && /kiosk/i.test(label);
+}
