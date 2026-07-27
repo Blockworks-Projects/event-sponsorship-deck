@@ -186,6 +186,13 @@
     padding-top: 1.5rem;
     padding-bottom: 1.5rem;
   }
+  /* Activations stay two-up on paper. Left to the md: breakpoint this
+     depends on how wide the print layout happens to be, and a single column
+     stretches each card across the full page. */
+  .pdf-two-up {
+    grid-template-columns: 1fr 1fr;
+  }
+
   /* The proposal's own background stops where its content does, which left
      the foot of the last page bright white against the warm grey above it. */
   html,
