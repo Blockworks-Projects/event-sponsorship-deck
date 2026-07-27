@@ -56,7 +56,16 @@ async function render(targetUrl: string, keepSingleProcess: boolean): Promise<Ui
     // 1152px into near-mobile proportions: the stats row wraps and the hero
     // shapes, anchored either side of the content column, fall off the page.
     // So the page is sized to the design instead, keeping A4's 1:1.414 ratio.
-    await page.setViewport({ width: PAGE_WIDTH, height: PAGE_HEIGHT, deviceScaleFactor: 2 });
+    // deviceScaleFactor 2 doubles the raster surface in each direction, so a
+    // three-page proposal is a ~2480x10500 bitmap plus every decoded image —
+    // enough to hit net::ERR_INSUFFICIENT_RESOURCES in a serverless container.
+    // 1 is plenty: PDF text stays vector either way, and the slide images are
+    // already wider than the column they sit in.
+    await page.setViewport({
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      deviceScaleFactor: process.env.VERCEL ? 1 : 2,
+    });
 
     // Deliberately NOT networkidle0. This page hydrates and fetches after
     // load, so "no connections for 500ms" raced with React's own requests and

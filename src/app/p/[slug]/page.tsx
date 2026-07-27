@@ -60,10 +60,15 @@ export default async function ProposalPage({
   ) as SponsorshipModule | undefined;
 
   // The whole content deck, rendered, for the "view sales deck" option.
-  const { data: deckPages } = await supabase
-    .from('deck_pages')
-    .select('page_index, image_url')
-    .order('page_index', { ascending: true });
+  // Skipped when printing: that view can't be reached in a PDF, and shipping
+  // ~20 slide URLs into a render that will never show them is weight the
+  // headless browser has to carry.
+  const { data: deckPages } = print === '1'
+    ? { data: [] }
+    : await supabase
+        .from('deck_pages')
+        .select('page_index, image_url')
+        .order('page_index', { ascending: true });
 
   return (
     <>
