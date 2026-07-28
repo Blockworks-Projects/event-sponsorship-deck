@@ -4,6 +4,7 @@
 import { supabase } from '@/lib/supabase';
 import { applyDiscount, parsePrice, formatPrice } from '@/lib/pricing';
 import { validEmailList } from '@/lib/contacts';
+import type { MenuLine } from '@/lib/a-la-carte';
 import type { ContentSession } from '@/lib/types';
 
 const HEADSHOT_BUCKET = 'session-speakers';
@@ -29,6 +30,8 @@ export interface ProposalInput {
    * goes at its standard price.
    */
   eventPrices?: Record<string, string>;
+  /** Selling individual items instead of a tier. Each line carries its price. */
+  aLaCarte?: MenuLine[];
   logoUrl?: string;
   introNote?: string;
   includeKiosk?: boolean;
@@ -143,6 +146,14 @@ export async function proposalColumns(input: ProposalInput) {
       return value === null ? running : (running ?? 0) + value;
     }, null);
 
+  // À la carte has no list price to discount against — the rep types what
+  // each item costs, and the total is their sum.
+  const menu = (input.aLaCarte ?? []).filter((line) => line.key);
+  const menuTotal = menu.reduce<number | null>((running, line) => {
+    const value = parsePrice(line.price ?? '');
+    return value === null ? running : (running ?? 0) + value;
+  }, null);
+
   const listTotal = sum((line) => line.list);
   const netTotal = sum((line) => line.net);
   const listPrice = listTotal === null ? null : formatPrice(listTotal);
@@ -167,7 +178,16 @@ export async function proposalColumns(input: ProposalInput) {
   );
 
   // A typed total is a negotiated bundle price and beats the arithmetic.
-  const quoted = input.totalOverride?.trim() || discounted || listPrice;
+  //
+  // A proposal can be both at once — Asia sold item by item while London is
+  // on a tier — so the quote is the tier price plus the items, not one or
+  // the other.
+  const tierTotal = parsePrice(discounted ?? listPrice);
+  const quoted = menu.length
+    ? tierTotal === null && menuTotal === null
+      ? null
+      : formatPrice((tierTotal ?? 0) + (menuTotal ?? 0))
+    : input.totalOverride?.trim() || discounted || listPrice;
 
   return {
     company: input.company,
@@ -181,7 +201,10 @@ export async function proposalColumns(input: ProposalInput) {
     discount_percent: input.discountPercent ?? null,
     discount_amount: input.discountAmount ?? null,
     event_discounts: Object.keys(eventDiscounts).length ? eventDiscounts : null,
+    // Kept even alongside à la carte items: a proposal can be a tier in one
+    // city and items in the other, and the investment table needs both halves.
     price_lines: lines.length ? lines : null,
+    a_la_carte: menu.length ? menu : null,
     discounted_price: discounted,
     total_price: quoted,
     created_by: input.createdBy || null,
@@ -231,6 +254,10 @@ export function picksFrom(input: ProposalInput) {
  * the rule holds for anything else that ever posts to this API.
  */
 export function allowsNoModules(input: ProposalInput): boolean {
+  // À la carte sells items directly, and a speaking-only order picks no
+  // activation modules at all.
+  if (input.aLaCarte?.length) return true;
+
   const tiers = input.tiers
     ? Object.values(input.tiers)
     : input.tier

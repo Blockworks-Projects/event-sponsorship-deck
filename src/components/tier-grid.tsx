@@ -31,6 +31,8 @@ interface Column {
   label: string;
   tier: string;
   table?: SponsorshipModule;
+  /** À la carte column: its rows are the items bought, not tier benefits. */
+  items?: string[];
 }
 
 export function TierGrid({
@@ -43,6 +45,8 @@ export function TierGrid({
   accent: string;
 }) {
   const tiers = proposal.tiers ?? {};
+  const menu = proposal.a_la_carte ?? [];
+
   const columns: Column[] = Object.entries(tiers)
     .sort(([a], [b]) => EVENT_ORDER.indexOf(a) - EVENT_ORDER.indexOf(b))
     .map(([event, tier]) => ({
@@ -52,6 +56,19 @@ export function TierGrid({
       table: tierTables.find((t) => (t.region || '').toLowerCase() === event.toLowerCase()),
     }));
 
+  // A city sold item by item still belongs in the comparison: it has no tier,
+  // so its column lists what was actually bought.
+  if (menu.length) {
+    const event = menu[0].event;
+    columns.push({
+      event,
+      label: EVENT_LABEL[event] ?? event,
+      tier: 'À la carte',
+      items: menu.map((item) => item.label),
+    });
+    columns.sort((a, b) => EVENT_ORDER.indexOf(a.event) - EVENT_ORDER.indexOf(b.event));
+  }
+
   if (columns.length < 2) return null;
 
   // Every benefit named by any of the events, in the order that event's table
@@ -59,6 +76,11 @@ export function TierGrid({
   // with a blank against the city that doesn't include it.
   const labels: string[] = [];
   columns.forEach((column) => {
+    // An à la carte column contributes its items as rows; a tier column
+    // contributes its benefits.
+    for (const label of column.items ?? []) {
+      if (!labels.includes(label)) labels.push(label);
+    }
     (column.table?.tier_rows ?? []).forEach((row) => {
       if (hidesKioskRow(proposal.include_kiosk, row.label)) return;
       if (!labels.includes(row.label)) labels.push(row.label);
@@ -66,6 +88,7 @@ export function TierGrid({
   });
 
   const valueFor = (column: Column, label: string) => {
+    if (column.items) return column.items.includes(label) ? 'Included' : null;
     const row = (column.table?.tier_rows ?? []).find((r) => r.label === label);
     const raw = row?.values[column.tier.toLowerCase()]?.trim();
     if (!raw || NOT_INCLUDED.test(raw)) return null;

@@ -44,11 +44,26 @@ export default async function BuilderHomePage({
   const { by } = await searchParams;
   const filterBy = (by ?? '').toLowerCase();
 
-  const { data: proposals } = await supabase
+  const COLUMNS =
+    'id, slug, company, event, tier, tiers, total_price, created_by_name, created_by, updated_at';
+
+  // a_la_carte arrived with individual-item selling. Asking for a column that
+  // isn't there yet fails the whole query, which would empty this list rather
+  // than just omit one label — so it falls back.
+  let { data: proposals } = await supabase
     .from('proposals')
-    .select('id, slug, company, event, tier, tiers, total_price, created_by_name, created_by, updated_at')
+    .select(`${COLUMNS}, a_la_carte`)
     .order('updated_at', { ascending: false })
     .limit(100);
+
+  if (!proposals) {
+    const { data } = await supabase
+      .from('proposals')
+      .select(COLUMNS)
+      .order('updated_at', { ascending: false })
+      .limit(100);
+    proposals = (data ?? []).map((row) => ({ ...row, a_la_carte: null }));
+  }
 
   // One query for every proposal's views, counted here — a per-row query
   // would be a hundred round trips to render one list.
@@ -138,11 +153,15 @@ export default async function BuilderHomePage({
                 <div className="mt-0.5 text-xs text-neutral-500">
                   {EVENT_LABEL[p.event ?? ''] ?? p.event ?? '—'}
                   {' · '}
-                  {p.tiers
-                    ? Object.entries(p.tiers as Record<string, string>)
-                        .map(([k, v]) => `${EVENT_LABEL[k] ?? k} ${v}`)
-                        .join(', ')
-                    : p.tier ?? '—'}
+                  {/* À la carte proposals have no tier — saying "—" reads as
+                      missing data rather than as how it was sold. */}
+                  {Array.isArray(p.a_la_carte) && p.a_la_carte.length
+                    ? 'À la carte'
+                    : p.tiers
+                      ? Object.entries(p.tiers as Record<string, string>)
+                          .map(([k, v]) => `${EVENT_LABEL[k] ?? k} ${v}`)
+                          .join(', ')
+                      : p.tier ?? '—'}
                   {p.created_by_name || p.created_by
                     ? ` · ${p.created_by_name ?? p.created_by}`
                     : ''}

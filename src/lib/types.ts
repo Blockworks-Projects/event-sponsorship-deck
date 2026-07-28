@@ -94,6 +94,10 @@ export interface Proposal {
     discount: string | null;
   }[] | null;
   event_discounts: Record<string, { amount: number | null }> | null;
+  /** Items sold without a tier, each priced by hand. Asia only at present. */
+  a_la_carte:
+    | { key: string; label: string; event: string; moduleId?: string | null; price?: string | null }[]
+    | null;
   include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session
   content_sessions: ContentSession[] | null;

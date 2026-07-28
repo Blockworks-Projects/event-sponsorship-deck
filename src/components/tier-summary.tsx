@@ -121,7 +121,10 @@ export function PriceBreakdown({
   accent: string;
 }) {
   const list = parsePrice(proposal.list_price);
-  const final = parsePrice(proposal.discounted_price) ?? list;
+  // total_price is the fallback because an à la carte proposal has no list
+  // price and nothing discounted — the total is simply the sum of the items.
+  const final =
+    parsePrice(proposal.discounted_price) ?? parsePrice(proposal.total_price) ?? list;
   if (final === null) return null;
 
   const saving = list !== null && final !== null && list > final ? list - final : null;
@@ -134,6 +137,11 @@ export function PriceBreakdown({
   // "Asia discounted, London at full price" is invisible in a single total.
   const lines = proposal.price_lines ?? [];
   const perEvent = lines.length > 1;
+
+  // À la carte: one row per item bought, at the price the rep quoted. There
+  // is no list price to strike through — nothing was discounted, the items
+  // simply cost what they cost.
+  const menu = proposal.a_la_carte ?? [];
   const EVENT_LABEL: Record<string, string> = {
     london: 'London',
     asia: 'Asia',
@@ -147,7 +155,31 @@ export function PriceBreakdown({
       </h2>
       <div className="pdf-block mt-4 border border-neutral-200 bg-white px-8 py-6">
         <dl className="divide-y divide-neutral-100">
-          {perEvent
+          {/* A tier city and an à la carte city can appear on the same
+              proposal, so the tier lines come first and the items after —
+              otherwise the total looks like it came from nowhere. */}
+          {menu.length > 0 &&
+            lines.map((line) => (
+              <div key={line.event} className="flex justify-between gap-6 py-3">
+                <dt className="text-sm text-neutral-700">
+                  {EVENT_LABEL[line.event] ?? line.event} · {line.tier}
+                  {line.discount && <span className="ml-2 text-neutral-500">was {line.list}</span>}
+                </dt>
+                <dd className="text-sm font-semibold text-neutral-900">{line.net}</dd>
+              </div>
+            ))}
+          {menu.length > 0
+            ? menu.map((item) => (
+                <div key={item.key} className="flex justify-between gap-6 py-3">
+                  <dt className="text-sm text-neutral-700">
+                    {EVENT_LABEL[item.event] ?? item.event} · {item.label}
+                  </dt>
+                  <dd className="text-sm font-semibold text-neutral-900">
+                    {item.price ? formatPrice(parsePrice(item.price) ?? 0) : '—'}
+                  </dd>
+                </div>
+              ))
+            : perEvent
             ? lines.map((line) => (
                 <div key={line.event} className="flex justify-between gap-6 py-3">
                   <dt className="text-sm text-neutral-700">
@@ -167,7 +199,7 @@ export function PriceBreakdown({
                   <dd className="text-sm font-semibold text-neutral-900">{formatPrice(list)}</dd>
                 </div>
               )}
-          {!perEvent && saving !== null && (
+          {!perEvent && menu.length === 0 && saving !== null && (
             <div className="flex justify-between gap-6 py-3">
               <dt className="text-sm text-neutral-700">
                 Discount{discountLabel ? ` (${discountLabel.replace(/ off$/, '')})` : ''}

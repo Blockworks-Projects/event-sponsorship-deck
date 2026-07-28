@@ -9,6 +9,14 @@ import { parsePrice, formatPrice } from '@/lib/pricing';
 import { validEmailList } from '@/lib/contacts';
 import { AccountPicker, type Account } from '@/components/account-picker';
 import { SELLERS } from '@/lib/sellers';
+import {
+  A_LA_CARTE_EVENTS,
+  BRANDING_ITEMS,
+  MENU_ITEMS,
+  SPEAKING_ITEMS,
+  isSpeaking,
+  type MenuLine,
+} from '@/lib/a-la-carte';
 
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
@@ -108,6 +116,23 @@ export function ProposalForm({
    */
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [appliedAccount, setAppliedAccount] = useState<string | null>(null);
+
+  /**
+   * Selling a tier, or individual items. À la carte is offered where the
+   * event sells it — Asia today — and replaces tiers rather than sitting
+   * alongside them: there is no tier to show benefits for.
+   */
+  const [saleMode, setSaleMode] = useState<'tier' | 'menu'>(
+    existing?.a_la_carte?.length ? 'menu' : 'tier'
+  );
+  const [menuPicks, setMenuPicks] = useState<string[]>(
+    (existing?.a_la_carte ?? []).map((line) => line.key)
+  );
+  const [menuPrices, setMenuPrices] = useState<Record<string, string>>(
+    Object.fromEntries(
+      (existing?.a_la_carte ?? []).map((line) => [line.key, String(parsePrice(line.price) ?? '')])
+    )
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -217,7 +242,11 @@ export function ProposalForm({
    * An item marked "Both" shows under each event it applies to.
    */
   const groups = useMemo(() => {
-    const wanted = eventFilter === 'both' ? EVENTS : EVENTS.filter((e) => e.key === eventFilter);
+    const sellingItems = saleMode === 'menu';
+    const wanted = (eventFilter === 'both' ? EVENTS : EVENTS.filter((e) => e.key === eventFilter))
+      // A city sold à la carte picks its items from the menu, not from the
+      // tier lists — showing both would offer the same activation twice.
+      .filter((e) => !(sellingItems && A_LA_CARTE_EVENTS.includes(e.key)));
 
     return wanted
       .map((ev) => {
@@ -246,7 +275,7 @@ export function ProposalForm({
         };
       })
       .filter((g) => g.tiers.length);
-  }, [activations, eventFilter, tierFilter, tiersByEvent]);
+  }, [activations, eventFilter, tierFilter, tiersByEvent, saleMode]);
 
   // Tier options and the standard price both come from the selected event's
   // tier table in the content deck, so they track whatever it currently says.
@@ -257,6 +286,43 @@ export function ProposalForm({
     ? Object.keys(tierTable.pricing).map((t) => t.charAt(0).toUpperCase() + t.slice(1))
     : [];
   const bothEvents = event === 'both';
+  // Offered per event: on a both-events proposal Asia can be sold à la carte
+  // while London stays on a tier, which is how it's actually sold.
+  const menuEvents = (bothEvents ? EVENTS.map((e) => e.key) : [event]).filter((key) =>
+    A_LA_CARTE_EVENTS.includes(key)
+  );
+  const menuOffered = menuEvents.length > 0;
+  const onMenu = menuOffered && saleMode === 'menu';
+  /** The event the items belong to — Asia today, whether alone or alongside London. */
+  const menuEvent = menuEvents[0] ?? event;
+
+  /**
+   * The card behind an à la carte item. Branding items are ordinary
+   * activation modules from the deck; speaking items have none.
+   */
+  const menuModuleFor = (item: { match?: RegExp }) =>
+    item.match
+      ? modules.find(
+          (m) =>
+            m.category === 'activation' &&
+            item.match!.test(m.title) &&
+            ['both', menuEvent].includes((m.region || '').toLowerCase())
+        )
+      : undefined;
+
+  /** The picked items, with their prices, ready to save. */
+  const menuLines: MenuLine[] = menuPicks.map((key) => {
+    const item = MENU_ITEMS.find((i) => i.key === key);
+    const module = item ? menuModuleFor(item) : undefined;
+    return {
+      key,
+      label: item?.label ?? key,
+      event: menuEvent,
+      moduleId: module?.id ?? null,
+      price: menuPrices[key] || null,
+    };
+  });
+
   const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
 
   /** The standard price for a tier at one event, from that event's table. */
@@ -300,12 +366,25 @@ export function ProposalForm({
     return typed ?? parsePrice(line.list);
   };
 
+  /** The à la carte items' total, for the summary and for what's quoted. */
+  const menuTotal = onMenu
+    ? menuPicks.reduce<number | null>((sum, key) => {
+        const value = parsePrice(menuPrices[key] ?? '');
+        return value === null ? sum : (sum ?? 0) + value;
+      }, null)
+    : null;
+
   const chargedTotal = chargeLines.reduce<number | null>((sum, line) => {
     const value = chargedFor(line);
     return value === null ? sum : (sum ?? 0) + value;
   }, null);
 
   const listTotalValue = parsePrice(listPrice);
+  /** Everything being sold: the tier prices plus the à la carte items. */
+  const combinedTotal =
+    listTotalValue === null && menuTotal === null
+      ? null
+      : formatPrice((listTotalValue ?? 0) + (menuTotal ?? 0));
   // Only a genuine reduction is a discount; typing the standard price back in
   // shouldn't put a struck-through line on the sponsor's proposal.
   const discountedPrice =
@@ -343,9 +422,11 @@ export function ProposalForm({
    * on the last step, which comes after this one, and hiding it on "not yet
    * decided" would take the option away before the rep had made the choice. */
   const tierAt = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
-  const sessionEvents = scopedEvents.filter(
-    (key) => !tierAt(key) || stageFor(key) !== ''
-  );
+  const sessionEvents = onMenu
+    ? menuPicks.some((key) => isSpeaking(key))
+      ? [event]
+      : []
+    : scopedEvents.filter((key) => !tierAt(key) || stageFor(key) !== '');
   const contentOffered = sessionEvents.length > 0;
 
   // Changing the tier while standing on the content step would otherwise
@@ -438,7 +519,12 @@ export function ProposalForm({
     // Gold is the one tier sold without activations, so it's the one case
     // where an empty proposal is legitimate. Checked per event, so a
     // both-events proposal can be Gold in one city and not the other.
-    const eventsMissingActivations = scopedEvents.filter(
+    if (onMenu && !menuPicks.length) {
+      return setError('Pick at least one item.');
+    }
+    const eventsMissingActivations = onMenu
+      ? []
+      : scopedEvents.filter(
       (key) => !cart.some((k) => cartEvent(k) === key)
     );
     const notGold = eventsMissingActivations.filter(
@@ -472,6 +558,7 @@ export function ProposalForm({
           tier: bothEvents ? undefined : sponsorTier || undefined,
           tiers: bothEvents ? tiersByEvent : undefined,
           eventPrices: pricingMode === 'custom' ? eventPrices : undefined,
+          aLaCarte: onMenu ? menuLines : undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
           includeKiosk,
@@ -485,10 +572,18 @@ export function ProposalForm({
               title: draft.title.trim() || undefined,
               speakers: draft.speakers,
             })) satisfies ContentSession[],
-          modules: cart.map((key) => ({
-            moduleId: cartModuleId(key),
-            event: cartEvent(key),
-          })),
+          // À la carte branding items are ordinary activation modules, so
+          // they're linked the same way and render as the same cards on the
+          // proposal. Speaking items have no module and are carried by
+          // aLaCarte alone.
+          modules: onMenu
+            ? menuLines
+                .filter((line) => line.moduleId)
+                .map((line) => ({ moduleId: line.moduleId as string, event: line.event }))
+            : cart.map((key) => ({
+                moduleId: cartModuleId(key),
+                event: cartEvent(key),
+              })),
         }),
       });
       const data = await res.json();
@@ -552,19 +647,39 @@ export function ProposalForm({
                       {options.map((t) => (
                         <Choice
                           key={t}
-                          selected={tiersByEvent[e.key] === t}
-                          onClick={() =>
+                          selected={tiersByEvent[e.key] === t && !(onMenu && e.key === menuEvent)}
+                          onClick={() => {
+                            if (onMenu && e.key === menuEvent) {
+                              setSaleMode('tier');
+                              setMenuPicks([]);
+                            }
                             setTiersByEvent((current) => {
                               const next = { ...current };
                               if (next[e.key] === t) delete next[e.key];
                               else next[e.key] = t;
                               return next;
-                            })
-                          }
+                            });
+                          }}
                         >
                           {t}
                         </Choice>
                       ))}
+                      {A_LA_CARTE_EVENTS.includes(e.key) && (
+                        <Choice
+                          selected={onMenu && e.key === menuEvent}
+                          onClick={() => {
+                            setSaleMode('menu');
+                            // No tier for the city being sold item by item.
+                            setTiersByEvent((current) => {
+                              const next = { ...current };
+                              delete next[e.key];
+                              return next;
+                            });
+                          }}
+                        >
+                          À la carte
+                        </Choice>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-neutral-500">
@@ -575,17 +690,41 @@ export function ProposalForm({
               );
             })
           ) : (
-            <Fieldset label="Tiers" hint="Leave empty to see every tier.">
+            <Fieldset
+              label="Selling"
+              hint={onMenu ? 'Items are picked next, each priced by hand.' : 'Leave empty to see every tier.'}
+            >
               <div className="flex flex-wrap gap-2">
                 {scopeTiers.map((t) => (
                   <Choice
                     key={t}
-                    selected={tierFilter.includes(t)}
-                    onClick={() => toggleTierFilter(t)}
+                    selected={!onMenu && tierFilter.includes(t)}
+                    onClick={() => {
+                      // Coming back from à la carte, the picks and their
+                      // prices go with it — they belong to a different way of
+                      // selling and would otherwise be saved silently.
+                      setSaleMode('tier');
+                      setMenuPicks([]);
+                      toggleTierFilter(t);
+                    }}
                   >
                     {t}
                   </Choice>
                 ))}
+                {/* Sits with the tiers because it's the same decision: what
+                    this sponsor is buying. Asia only for now. */}
+                {menuOffered && (
+                  <Choice
+                    selected={onMenu}
+                    onClick={() => {
+                      setSaleMode('menu');
+                      setTierFilter([]);
+                      setSponsorTier('');
+                    }}
+                  >
+                    À la carte
+                  </Choice>
+                )}
               </div>
             </Fieldset>
           )}
@@ -597,8 +736,76 @@ export function ProposalForm({
       )}
 
       {step === 1 && (
-        <StepPanel title="Choose activations" hint={`${cart.length} selected`}>
-          {groups.length === 0 && (
+        <StepPanel
+          title={onMenu && !bothEvents ? 'Choose items' : 'Choose activations'}
+          hint={`${cart.length + menuPicks.length} selected`}
+        >
+          {onMenu && (
+            <>
+          {[
+            { heading: 'Branding & Activations', items: BRANDING_ITEMS },
+            { heading: 'Speaking', items: SPEAKING_ITEMS },
+          ].map((group) => (
+            <div key={group.heading} className="mb-10">
+              <h3 className="mb-4 text-sm font-bold uppercase tracking-widest text-neutral-300">
+                {group.heading}
+              </h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.items.map((item) => {
+                  const picked = menuPicks.includes(item.key);
+                  // Branding items are the same cards a tier proposal sells,
+                  // so they show the deck's own title and description rather
+                  // than the shorthand on the à la carte slide.
+                  const module = menuModuleFor(item);
+                  return (
+                    <label
+                      key={item.key}
+                      className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${
+                        picked
+                          ? 'border-neutral-500 bg-neutral-800'
+                          : 'border-neutral-800 hover:border-neutral-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={picked}
+                        onChange={() =>
+                          setMenuPicks((current) =>
+                            current.includes(item.key)
+                              ? current.filter((k) => k !== item.key)
+                              : [...current, item.key]
+                          )
+                        }
+                        className="mt-0.5"
+                      />
+                      <span>
+                        <span className="block font-medium text-neutral-100">
+                          {module?.title ?? item.label}
+                        </span>
+                        {module?.description && (
+                          <span className="mt-0.5 block text-xs text-neutral-500">
+                            {module.description.slice(0, 90)}
+                            {module.description.length > 90 ? '…' : ''}
+                          </span>
+                        )}
+                        {!module && item.match && (
+                          // Named on the slide but not found in the library —
+                          // better to say so than to sell a blank card.
+                          <span className="mt-0.5 block text-xs text-neutral-500">
+                            Not found in the synced deck yet.
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+            </>
+          )}
+
+          {groups.length === 0 && !onMenu && (
             <p className="mb-6 text-sm text-neutral-500">
               Nothing matches that scope. Widen the event or tiers in step 1.
             </p>
@@ -957,6 +1164,48 @@ export function ProposalForm({
                   const options = tiersForEvent(e.key).map(
                     (t) => t.charAt(0).toUpperCase() + t.slice(1)
                   );
+                  // Sold item by item, so there is no tier to choose here —
+                  // this is where its prices are set instead.
+                  if (onMenu && e.key === menuEvent) {
+                    return (
+                      <Fieldset
+                        key={e.key}
+                        label={`${e.label} à la carte`}
+                        hint="Set the price for each item you picked."
+                        stackHint
+                      >
+                        {menuPicks.length === 0 ? (
+                          <p className="text-sm text-neutral-500">
+                            No items picked yet. Choose them in step 2.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {MENU_ITEMS.filter((item) => menuPicks.includes(item.key)).map(
+                              (item) => (
+                                <div key={item.key} className="flex items-center gap-3">
+                                  <span className="flex-1 text-sm text-neutral-300">
+                                    {item.label}
+                                  </span>
+                                  <Input
+                                    value={menuPrices[item.key] ?? ''}
+                                    onChange={(ev) =>
+                                      setMenuPrices((current) => ({
+                                        ...current,
+                                        [item.key]: ev.target.value,
+                                      }))
+                                    }
+                                    placeholder="Price"
+                                    inputMode="decimal"
+                                    className="w-40"
+                                  />
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </Fieldset>
+                    );
+                  }
                   return (
                     <Fieldset key={e.key} label={`${e.label} tier`}>
                       {options.length ? (
@@ -986,6 +1235,38 @@ export function ProposalForm({
                     </Fieldset>
                   );
                 })
+              ) : onMenu ? (
+                <Fieldset
+                  label="À la carte"
+                  hint="Set the price for each item you picked."
+                  stackHint
+                >
+                  {menuPicks.length === 0 ? (
+                    <p className="text-sm text-neutral-500">
+                      No items picked yet. Choose them in step 2.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {MENU_ITEMS.filter((item) => menuPicks.includes(item.key)).map((item) => (
+                        <div key={item.key} className="flex items-center gap-3">
+                          <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
+                          <Input
+                            value={menuPrices[item.key] ?? ''}
+                            onChange={(e) =>
+                              setMenuPrices((current) => ({
+                                ...current,
+                                [item.key]: e.target.value,
+                              }))
+                            }
+                            placeholder="Price"
+                            inputMode="decimal"
+                            className="w-40"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Fieldset>
               ) : (
                 <Fieldset label="Sponsorship tier">
                   {availableTiers.length > 0 ? (
@@ -1008,6 +1289,7 @@ export function ProposalForm({
                 </Fieldset>
               )}
 
+              {chargeLines.length > 0 && (
               <Fieldset label="Pricing">
                 <div className="flex gap-2">
                   {(['standard', 'custom'] as const).map((mode) => (
@@ -1024,6 +1306,8 @@ export function ProposalForm({
                   ))}
                 </div>
               </Fieldset>
+
+              )}
 
               {pricingMode === 'custom' && chargeLines.length > 0 && (
                 <Fieldset label="Update the cost">
@@ -1057,7 +1341,7 @@ export function ProposalForm({
                 </Fieldset>
               )}
 
-              {listPrice && (
+              {(listPrice || menuTotal !== null) && (
                 <div className="mb-6 bg-neutral-800 px-3 py-2 text-sm">
                   {priceLines.map((line) => (
                     <div key={line.key} className="flex justify-between text-neutral-400">
@@ -1065,14 +1349,27 @@ export function ProposalForm({
                       <span>{line.price ?? '—'}</span>
                     </div>
                   ))}
+                  {/* One line for the items, so a mixed proposal's total is
+                      obviously the sum of a tier and a basket rather than
+                      appearing to ignore half of what's being sold. */}
+                  {menuTotal !== null && (
+                    <div className="flex justify-between text-neutral-400">
+                      <span>
+                        {EVENTS.find((e) => e.key === menuEvent)?.label ?? menuEvent} · À la carte
+                      </span>
+                      <span>{formatPrice(menuTotal)}</span>
+                    </div>
+                  )}
                   <div
                     className={`flex justify-between ${
-                      priceLines.length ? 'mt-1 border-t border-neutral-700 pt-1' : ''
+                      priceLines.length || menuTotal !== null
+                        ? 'mt-1 border-t border-neutral-700 pt-1'
+                        : ''
                     } text-neutral-400`}
                   >
-                    <span>{priceLines.length ? 'Combined' : 'Standard'}</span>
+                    <span>{priceLines.length || menuTotal !== null ? 'Combined' : 'Standard'}</span>
                     <span className={discountedPrice ? 'line-through' : undefined}>
-                      {listPrice}
+                      {combinedTotal}
                     </span>
                   </div>
                   {discountedPrice && (

@@ -175,6 +175,11 @@ export function ProposalView({
   const kioskAccent = EVENT_ACCENT.london;
 
 
+  // À la carte: items bought individually, so there is no tier block to show
+  // and the investment section lists what was actually picked.
+  const menu = proposal.a_la_carte ?? [];
+  const onMenu = menu.length > 0;
+
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
   const gateAccent = gateBothEvents
@@ -459,7 +464,7 @@ export function ProposalView({
                   <HeroStat label="Venue" value={facts.venue} />
                 </>
               )}
-              {proposal.tier && <HeroStat label="Tier" value={proposal.tier} />}
+              {proposal.tier && !onMenu && <HeroStat label="Tier" value={proposal.tier} />}
               {price && <HeroStat label="Investment" value={price} accent={accent} />}
             </dl>
           </div>
@@ -522,9 +527,12 @@ export function ProposalView({
         </div>
       </section>
 
+      {/* Across two cities the grid handles both kinds of column, including a
+          city sold à la carte. On a single event there is nothing to compare,
+          so an à la carte proposal simply has no tier block. */}
       {bothEvents ? (
         <TierGrid proposal={proposal} tierTables={tierTables} accent={accent} />
-      ) : (
+      ) : onMenu ? null : (
         <TierIncluded proposal={proposal} tierTable={tierTable} accent={accent} />
       )}
 
