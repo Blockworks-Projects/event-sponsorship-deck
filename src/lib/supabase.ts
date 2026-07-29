@@ -7,15 +7,20 @@
 // reuses the SAME Supabase project, just adds new tables to it.
 //
 // Env vars (Vercel → Project → Settings → Environment Variables):
-//   SUPABASE_URL          e.g. https://xxxxxxxx.supabase.co
-//   SUPABASE_SERVICE_KEY  the service_role key (Project Settings → API)
+//   SUPABASE_URL               e.g. https://xxxxxxxx.supabase.co
+//   SUPABASE_SERVICE_ROLE_KEY  the service_role key (Project Settings → API)
+//
+// The Supabase native Vercel integration injects the service key as
+// SUPABASE_SERVICE_ROLE_KEY (and the URL as SUPABASE_URL). We also accept
+// the legacy SUPABASE_SERVICE_KEY name for backward compatibility with any
+// manually-configured environments.
 import { createClient } from '@supabase/supabase-js';
 
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_KEY;
+const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
 if (!url || !key) {
-  console.warn('SUPABASE_URL / SUPABASE_SERVICE_KEY are not set — Supabase calls will fail.');
+  console.warn('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — Supabase calls will fail.');
 }
 
 // Fall back to a syntactically-valid placeholder so createClient doesn't
