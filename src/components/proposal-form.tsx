@@ -22,6 +22,10 @@ import { hidesKioskRow } from '@/lib/kiosk';
 /** Cells that mean "this tier doesn't get it" on the source tier table. */
 const NOT_INCLUDED = /^[–—-]$/;
 
+/** The tier-chart row that is a speaking slot. Adding it on earns the event a
+ *  content proposal, the same as a Presenting/Diamond tier does. */
+const SPEAKING_ROW = /fireside|keynote/i;
+
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
 // this replaced compared "Presenting" against "PRESENTING" and so silently
@@ -456,11 +460,16 @@ export function ProposalForm({
   // 'both' session — otherwise a both proposal that mixes à la carte in one
   // city with a speaking tier in the other only ever asked once, labelled
   // "both", and the saved session belonged to neither city on the proposal.
-  const sessionEvents = scopedEvents.filter((key) =>
-    onMenu && key === menuEvent
-      ? menuPicks.some((pick) => isSpeaking(pick))
-      : !tierAt(key) || stageFor(key) !== ''
-  );
+  // A speaking benefit added on the Add-ons step earns that event a content
+  // proposal too, whichever way the event is sold.
+  const addedSpeaking = (key: string) =>
+    (overrides[key]?.added ?? []).some((label) => SPEAKING_ROW.test(label));
+
+  const sessionEvents = scopedEvents.filter((key) => {
+    if (addedSpeaking(key)) return true;
+    if (onMenu && key === menuEvent) return menuPicks.some((pick) => isSpeaking(pick));
+    return !tierAt(key) || stageFor(key) !== '';
+  });
   const contentOffered = sessionEvents.length > 0;
 
   // Add-ons: per event, the tier table for that city, the benefits its tier
@@ -487,7 +496,9 @@ export function ProposalForm({
 
   const addableRows = (eventKey: string) => {
     const table = tierTableFor(eventKey);
-    if (!tierAt(eventKey) || !table) return [] as string[];
+    if (!table) return [] as string[];
+    // No tier (an à la carte city) means nothing is included by default, so
+    // every benefit the chart grants is available to add on — speaking included.
     const already = new Set(includedRows(eventKey));
     return (table.tier_rows ?? [])
       .filter((row) => !hidesKioskRow(includeKiosk, row.label))
@@ -503,11 +514,12 @@ export function ProposalForm({
       .map((row) => row.label);
   };
 
-  // The events whose tier has an included list to tweak — tier-based (not à la
-  // carte) with a tier chosen and a chart to read. Kept out until a tier is
-  // picked, so the step never shows an empty list.
+  // Events with a chart to tweak: a tier city once its tier is picked, and the
+  // à la carte city too — it has no tier of its own, but the same chart's
+  // benefits (speaking included) can still be added on to the package.
+  const isMenuEvent = (key: string) => onMenu && key === menuEvent;
   const addOnEvents = scopedEvents.filter(
-    (key) => !(onMenu && key === menuEvent) && !!tierAt(key) && !!tierTableFor(key)
+    (key) => !!tierTableFor(key) && (isMenuEvent(key) || !!tierAt(key))
   );
   const addOnOffered = addOnEvents.length > 0;
   // Whether the rep has actually changed anything — drives the custom-pricing
@@ -1000,11 +1012,11 @@ export function ProposalForm({
       )}
 
       {step === 2 && addOnOffered && (
-        <StepPanel title="Add-ons" hint="Tune what each tier includes">
+        <StepPanel title="Add-ons" hint="Tune what's in the package">
           <p className="mb-6 text-sm text-neutral-400">
-            Everything the tier includes is listed below. Remove anything you&apos;re
-            not offering, and add on anything extra from the same chart. Any change
-            here switches the package to custom pricing on the last step.
+            Remove anything a tier includes that you&apos;re not offering, and open
+            Add on for extras from the chart that aren&apos;t already included. Any
+            change here switches the package to custom pricing on the last step.
           </p>
           {addOnEvents.map((key) => {
             const tier = tierAt(key);
@@ -1022,40 +1034,52 @@ export function ProposalForm({
                   </div>
                 )}
 
-                <Fieldset label={`Included in ${tier}`} hint="Remove anything not in this package.">
-                  {included.length === 0 ? (
-                    <p className="text-sm text-neutral-500">Nothing listed for this tier.</p>
-                  ) : (
-                    <ul className="space-y-1.5">
-                      {included.map((benefit) => {
-                        const off = removed.has(benefit);
-                        return (
-                          <li key={benefit}>
-                            <button
-                              type="button"
-                              onClick={() => toggleOverride(key, 'removed', benefit)}
-                              className={`flex w-full items-center gap-3 border px-3 py-2 text-left text-sm ${
-                                off
-                                  ? 'border-neutral-800 text-neutral-600 line-through'
-                                  : 'border-neutral-700 text-neutral-200'
-                              }`}
-                            >
-                              <span aria-hidden>{off ? '+' : '✓'}</span>
-                              <span className="flex-1">{benefit}</span>
-                              <span className="text-xs text-neutral-500">
-                                {off ? 'Add back' : 'Remove'}
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </Fieldset>
+                {isMenuEvent(key) ? (
+                  <p className="mb-3 text-sm text-neutral-500">
+                    À la carte package — add optional extras from the chart below.
+                  </p>
+                ) : (
+                  <Fieldset label={`Included in ${tier}`} hint="Remove anything not in this package.">
+                    {included.length === 0 ? (
+                      <p className="text-sm text-neutral-500">Nothing listed for this tier.</p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {included.map((benefit) => {
+                          const off = removed.has(benefit);
+                          return (
+                            <li key={benefit}>
+                              <button
+                                type="button"
+                                onClick={() => toggleOverride(key, 'removed', benefit)}
+                                className={`flex w-full items-center gap-3 border px-3 py-2 text-left text-sm ${
+                                  off
+                                    ? 'border-neutral-800 text-neutral-600 line-through'
+                                    : 'border-neutral-700 text-neutral-200'
+                                }`}
+                              >
+                                <span aria-hidden>{off ? '+' : '✓'}</span>
+                                <span className="flex-1">{benefit}</span>
+                                <span className="text-xs text-neutral-500">
+                                  {off ? 'Add back' : 'Remove'}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </Fieldset>
+                )}
 
                 {addable.length > 0 && (
-                  <Fieldset label="Add on" hint="Extras from the chart not normally in this tier.">
-                    <ul className="space-y-1.5">
+                  <details className="border border-neutral-800">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                      <span>Add on</span>
+                      <span className="text-neutral-600">
+                        {added.size ? `${added.size} added` : `${addable.length} available`}
+                      </span>
+                    </summary>
+                    <ul className="space-y-1.5 border-t border-neutral-800 p-3">
                       {addable.map((benefit) => {
                         const on = added.has(benefit);
                         return (
@@ -1077,7 +1101,7 @@ export function ProposalForm({
                         );
                       })}
                     </ul>
-                  </Fieldset>
+                  </details>
                 )}
               </div>
             );
@@ -1103,7 +1127,11 @@ export function ProposalForm({
             return (
               <div key={key} className="mb-8 border-b border-neutral-800 pb-6 last:border-0">
                 <Fieldset
-                  label={bothEvents ? `${label} content proposal?` : 'Include a content proposal?'}
+                  label={
+                    bothEvents
+                      ? `Would you like to add ${label} details to this proposal?`
+                      : 'Would you like to add details to this proposal?'
+                  }
                 >
                   <div className="flex gap-2">
                     <Choice
@@ -1507,7 +1535,7 @@ export function ProposalForm({
                   // set it below.
                   <p className="text-sm text-neutral-400">
                     Additional items have been added or removed, so this package is
-                    priced custom — please set the price for it below.
+                    priced custom, please set the price for it below.
                   </p>
                 ) : (
                   <div className="flex gap-2">
