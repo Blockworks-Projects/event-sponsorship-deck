@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { CopyLink } from '@/components/copy-link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { formatWhen } from '@/lib/format';
+import { ViewedAt } from '@/components/viewed-at';
 import type { SponsorshipModule } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -135,7 +135,7 @@ export default async function BuilderProposalPage({
                   >
                     <span className="text-neutral-200">{v.viewer_email}</span>
                     <span className="text-xs text-neutral-500">
-                      {formatWhen(v.started_at)}
+                      <ViewedAt iso={v.started_at} />
                     </span>
                   </li>
                 ))}
