@@ -31,6 +31,13 @@ const SPEAKING_ROW = /fireside|keynote/i;
 // this replaced compared "Presenting" against "PRESENTING" and so silently
 // matched nothing at all.
 const TIERS = ['Presenting', 'Diamond', 'Platinum', 'Gold'];
+/** Where a tier sits in the canonical order (Presenting → Gold). Used to sort
+ *  tier lists read off a pricing table, whose keys come in no fixed order.
+ *  Unknown tiers sort to the end. */
+const tierRank = (t: string) => {
+  const i = TIERS.findIndex((x) => x.toLowerCase() === t.toLowerCase());
+  return i === -1 ? TIERS.length : i;
+};
 // Chronological: Asia is October, London is November.
 const EVENTS = [
   { key: 'asia', label: 'Asia' },
@@ -246,7 +253,10 @@ export function ProposalForm({
     const tables = modules.filter((m) => m.category === 'tier-table');
     return (eventKey: string): string[] => {
       const table = tables.find((m) => (m.region || '').toLowerCase() === eventKey);
-      return table ? Object.keys(table.pricing) : [];
+      // Canonical order (Presenting → Gold), not the pricing object's key order.
+      return table
+        ? Object.keys(table.pricing).sort((a, b) => tierRank(a) - tierRank(b))
+        : [];
     };
   }, [modules]);
 
@@ -313,7 +323,9 @@ export function ProposalForm({
     (m) => m.category === 'tier-table' && (m.region || '').toLowerCase() === event.toLowerCase()
   );
   const availableTiers = tierTable
-    ? Object.keys(tierTable.pricing).map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+    ? Object.keys(tierTable.pricing)
+        .sort((a, b) => tierRank(a) - tierRank(b))
+        .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
     : [];
   const bothEvents = event === 'both';
   // Offered per event: on a both-events proposal Asia can be sold à la carte
@@ -1036,7 +1048,7 @@ export function ProposalForm({
 
                 {isMenuEvent(key) ? (
                   <p className="mb-3 text-sm text-neutral-500">
-                    À la carte package — add optional extras from the chart below.
+                    À la carte package, add optional extras from the chart below.
                   </p>
                 ) : (
                   <Fieldset label={`Included in ${tier}`} hint="Remove anything not in this package.">
@@ -1129,8 +1141,8 @@ export function ProposalForm({
                 <Fieldset
                   label={
                     bothEvents
-                      ? `Would you like to add ${label} details to this proposal?`
-                      : 'Would you like to add details to this proposal?'
+                      ? `${label}: would you like to add content details to this proposal?`
+                      : 'Would you like to add content details to this proposal?'
                   }
                 >
                   <div className="flex gap-2">

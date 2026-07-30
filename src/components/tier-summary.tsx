@@ -174,7 +174,7 @@ export function PriceBreakdown({
               <div key={line.event} className="flex justify-between gap-6 py-3">
                 <dt className="text-sm text-neutral-700">
                   {EVENT_LABEL[line.event] ?? line.event} · {line.tier}
-                  {line.discount && <span className="ml-2 text-neutral-500">was {line.list}</span>}
+                  {line.discount && <span className="ml-2 text-neutral-500 line-through">{line.list}</span>}
                 </dt>
                 <dd className="text-sm font-semibold text-neutral-900">{line.net}</dd>
               </div>
@@ -196,8 +196,8 @@ export function PriceBreakdown({
                   <dt className="text-sm text-neutral-700">
                     {EVENT_LABEL[line.event] ?? line.event} · {line.tier}
                     {line.discount && (
-                      <span className="ml-2 text-neutral-500">
-                        was {line.list}
+                      <span className="ml-2 text-neutral-500 line-through">
+                        {line.list}
                       </span>
                     )}
                   </dt>
