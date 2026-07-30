@@ -313,7 +313,10 @@ export function ProposalForm({
             tier,
             items: activations.filter((m) => {
               const region = (m.region || '').toLowerCase();
-              if (region !== 'both' && region !== ev.key) return false;
+              // "both" means London + Asia (the 2026 cities) — never New York,
+              // which is its own 2027 event with its own catalog.
+              const bothApplies = region === 'both' && ev.key !== 'nyc';
+              if (region !== ev.key && !bothApplies) return false;
               if ((m.tier || '').toLowerCase() !== tier.toLowerCase()) return false;
               if (wantedTiers.length && !wantedTiers.some((t) => t.toLowerCase() === tier.toLowerCase())) {
                 return false;
