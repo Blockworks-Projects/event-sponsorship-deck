@@ -6,7 +6,7 @@
 // so nothing here is per-recipient. It exists for the case where a rep wants
 // to send the deck before there's a deal to quote, and still know who opened
 // it.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 
 export interface Deck {
@@ -21,6 +21,12 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
   const [openDeck, setOpenDeck] = useState<Deck | null>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Opening or switching a deck is a page change in spirit: start it at the
+  // top rather than leaving the reader wherever the last deck was scrolled.
+  useEffect(() => {
+    if (openDeck) window.scrollTo(0, 0);
+  }, [openDeck]);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();

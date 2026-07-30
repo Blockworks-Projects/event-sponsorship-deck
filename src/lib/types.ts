@@ -101,6 +101,10 @@ export interface Proposal {
   include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session
   content_sessions: ContentSession[] | null;
+  /** Per-event tweaks to the tier's included list: benefit labels the rep
+   *  removed from, or added on top of, what the tier chart lists. Keyed by
+   *  event ('london'/'asia'/'nyc', or the single event on a one-city deal). */
+  included_overrides: Record<string, { removed: string[]; added: string[] }> | null;
   total_price: string | null;
   created_by: string | null;
   created_by_name: string | null;

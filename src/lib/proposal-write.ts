@@ -37,6 +37,8 @@ export interface ProposalInput {
   includeKiosk?: boolean;
   contentSession?: ContentSession;
   contentSessions?: ContentSession[];
+  /** Per-event tweaks to the tier's included list, keyed by event. */
+  includedOverrides?: Record<string, { removed: string[]; added: string[] }>;
   /** Each pick, with the event it's for. */
   modules?: { moduleId: string; event?: string }[];
   /** Older callers: module ids with no event. */
@@ -219,6 +221,10 @@ export async function proposalColumns(input: ProposalInput) {
           await Promise.all(input.contentSessions.map((s) => persistSessionHeadshots(s)))
         ).filter(Boolean) as ContentSession[])
       : null,
+    included_overrides:
+      input.includedOverrides && Object.keys(input.includedOverrides).length
+        ? input.includedOverrides
+        : null,
     updated_at: new Date().toISOString(),
   };
 }

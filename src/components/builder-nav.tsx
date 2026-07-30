@@ -37,7 +37,7 @@ export function BuilderNav() {
           {!onHome && !onNew && (
             <Link
               href="/builder/new"
-              className="text-sm font-semibold text-neutral-400 hover:text-neutral-100"
+              className="bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
             >
               New proposal
             </Link>

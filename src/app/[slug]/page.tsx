@@ -4,9 +4,17 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { ProposalView } from '@/components/proposal-view';
+import type { Deck } from '@/components/public-deck-view';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+
+/** The decks on offer, in the order the picker should read — same set and
+ *  order as the public /sponsorships page. */
+const DECKS = [
+  { key: 'das', label: 'DAS 2026' },
+  { key: 'nyc', label: 'DAS 2027' },
+];
 
 export default async function ProposalPage({
   params,
@@ -59,20 +67,40 @@ export default async function ProposalPage({
     (m) => (m.region || '').toLowerCase() === (proposal.event || '').toLowerCase()
   ) as SponsorshipModule | undefined;
 
-  // The whole content deck, rendered, for the "view sales deck" option.
+  // The sales decks, rendered, for the "view sales deck" option — grouped by
+  // deck so the sponsor can pick DAS 2026 or 2027, the same as the public
+  // /sponsorships page. Fetching without the deck_key filter used to return
+  // both decks interleaved by page number, so the two read as one jumbled deck.
+  //
   // Skipped when printing: that view can't be reached in a PDF, and shipping
-  // ~20 slide URLs into a render that will never show them is weight the
+  // the slide URLs into a render that will never show them is weight the
   // headless browser has to carry.
-  // Built as a plain string[] rather than a conditional query result: a
-  // ternary over two differently-shaped results gives a union of array types,
-  // and .map() on that doesn't typecheck.
-  let deckImages: string[] = [];
+  let decks: Deck[] = [];
   if (print !== '1') {
-    const { data } = await supabase
+    // deck_key arrived with the second deck. If the column isn't there yet the
+    // whole query errors, so fall back to reading the pages without it and
+    // treat them as the London/Asia ('das') deck — which is what they are.
+    let { data: pages } = await supabase
       .from('deck_pages')
-      .select('page_index, image_url')
+      .select('deck_key, page_index, image_url')
       .order('page_index', { ascending: true });
-    deckImages = (data ?? []).map((row) => row.image_url as string);
+
+    if (!pages) {
+      const { data: legacy } = await supabase
+        .from('deck_pages')
+        .select('page_index, image_url')
+        .order('page_index', { ascending: true });
+      pages = (legacy ?? []).map((row) => ({ ...row, deck_key: 'das' }));
+    }
+
+    decks = DECKS.map((deck) => ({
+      ...deck,
+      pages: (pages ?? [])
+        .filter((row) => (row.deck_key ?? 'das') === deck.key)
+        .map((row) => row.image_url as string),
+    }))
+      // A deck with nothing synced yet shouldn't offer an empty button.
+      .filter((deck) => deck.pages.length > 0);
   }
 
   return (
@@ -88,7 +116,7 @@ export default async function ProposalPage({
       )}
       <ProposalView
         proposal={proposal as Proposal}
-        deckPages={deckImages}
+        decks={decks}
         modules={modules}
         tierTable={tierTable}
         tierTables={(tierTables ?? []) as SponsorshipModule[]}

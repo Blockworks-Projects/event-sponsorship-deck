@@ -7,6 +7,7 @@ import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
 import { TierGrid } from '@/components/tier-grid';
 import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
+import type { Deck } from '@/components/public-deck-view';
 import { KIOSK } from '@/lib/kiosk';
 import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
@@ -84,7 +85,7 @@ export function ProposalView({
   modules,
   tierTable,
   tierTables = [],
-  deckPages = [],
+  decks = [],
   skipGate,
   autoPrint,
 }: {
@@ -92,7 +93,7 @@ export function ProposalView({
   modules: (SponsorshipModule & { pickedFor?: string | null })[];
   tierTable?: SponsorshipModule;
   tierTables?: SponsorshipModule[];
-  deckPages?: string[];
+  decks?: Deck[];
   skipGate?: boolean;
   /** Opened from the builder to print: raise the dialog on arrival. */
   autoPrint?: boolean;
@@ -103,6 +104,9 @@ export function ProposalView({
   const [view, setView] = useState<'choose' | 'proposal' | 'deck'>(
     skipGate ? 'proposal' : 'choose'
   );
+  // Which sales deck is open, once past the picker. Null means "still choosing"
+  // when more than one deck has slides.
+  const [deckKey, setDeckKey] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +124,13 @@ export function ProposalView({
     window.addEventListener('load', raise);
     return () => window.removeEventListener('load', raise);
   }, [autoPrint]);
+
+  // Moving between the proposal, the deck picker and a deck is a page change in
+  // spirit, so start each at the top rather than wherever the last one was
+  // scrolled — otherwise switching decks drops you into the middle of the next.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view, deckKey]);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();
@@ -263,7 +274,6 @@ export function ProposalView({
   // always there. Our own rendered pages are preferred; the embed is the
   // fallback for before a sync has run.
   const embedUrl = process.env.NEXT_PUBLIC_DECK_EMBED_URL;
-  const hasPages = deckPages.length > 0;
 
   if (view === 'choose') {
     return (
@@ -296,26 +306,66 @@ export function ProposalView({
   }
 
   if (view === 'deck') {
+    // One deck needs no choosing; with two the sponsor picks, then can switch.
+    const openDeck =
+      (deckKey && decks.find((d) => d.key === deckKey)) ||
+      (decks.length === 1 ? decks[0] : null);
+
     return (
       <div className="min-h-screen bg-[#fafafa]">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-[#fafafa]/95 px-6 py-3 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-neutral-200 bg-[#fafafa]/95 px-6 py-3 backdrop-blur">
           <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: accent }}>
-            Digital Asset Summit
+            {openDeck ? openDeck.label : 'Digital Asset Summit'}
           </span>
-          <button onClick={() => setView('proposal')} className="text-sm font-semibold underline">
-            Back to your proposal
-          </button>
+          <div className="flex items-center gap-3">
+            {/* When a deck is open, offer a jump to each other deck by name. */}
+            {openDeck &&
+              decks
+                .filter((deck) => deck.key !== openDeck.key)
+                .map((deck) => (
+                  <button
+                    key={deck.key}
+                    onClick={() => setDeckKey(deck.key)}
+                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                  >
+                    {deck.label}
+                  </button>
+                ))}
+            <button onClick={() => setView('proposal')} className="text-sm font-semibold underline">
+              Back to your proposal
+            </button>
+          </div>
         </div>
+
         {/* Preferred: our own rendered pages. They scroll instead of clicking
             slide by slide, sit on our background rather than a black letterbox,
             and keep the deck behind the email gate. */}
-        {hasPages ? (
+        {openDeck ? (
           <div className="mx-auto max-w-[1240px] py-8">
-            {deckPages.map((src, i) => (
+            {openDeck.pages.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img key={i} src={src} alt={`Slide ${i + 1}`}
                 className="block w-full mix-blend-multiply" loading="lazy" />
             ))}
+          </div>
+        ) : decks.length > 1 ? (
+          // Past the button, before a deck: which one do they want.
+          <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+            <p className="text-lg text-neutral-600">
+              Which Digital Asset Summit deck would you like to view?
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-4">
+              {decks.map((deck) => (
+                <button
+                  key={deck.key}
+                  onClick={() => setDeckKey(deck.key)}
+                  className="px-8 py-4 text-sm font-semibold text-white"
+                  style={{ backgroundColor: accent }}
+                >
+                  {deck.label}
+                </button>
+              ))}
+            </div>
           </div>
         ) : embedUrl ? (
           <iframe src={embedUrl} title="Digital Asset Summit sales deck"

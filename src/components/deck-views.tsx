@@ -33,8 +33,10 @@ export function DeckViews({
   const decks = useMemo(() => {
     const seen: string[] = [];
     for (const v of views) {
-      const key = v.deck_key ?? UNKNOWN;
-      if (!seen.includes(key)) seen.push(key);
+      // Views with no deck recorded (older public opens from before deck
+      // tracking) don't get their own tab — they still count under "All decks".
+      if (!v.deck_key) continue;
+      if (!seen.includes(v.deck_key)) seen.push(v.deck_key);
     }
     return seen;
   }, [views]);
@@ -57,7 +59,7 @@ export function DeckViews({
     <>
       {/* Only worth showing tabs when there's more than one deck to split by. */}
       {decks.length > 1 && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
           {tabs.map((key) => {
             const isActive = key === active;
             return (

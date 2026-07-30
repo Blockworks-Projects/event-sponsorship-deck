@@ -17,6 +17,10 @@ import {
   isSpeaking,
   type MenuLine,
 } from '@/lib/a-la-carte';
+import { hidesKioskRow } from '@/lib/kiosk';
+
+/** Cells that mean "this tier doesn't get it" on the source tier table. */
+const NOT_INCLUDED = /^[–—-]$/;
 
 // Tiers are stored uppercase on the modules ("PRESENTING") but read better
 // capitalised, so every comparison here is case-insensitive. The flat filter
@@ -31,7 +35,7 @@ const EVENTS = [
 
 type EventFilter = 'london' | 'asia' | 'both';
 
-const STEPS = ['Scope', 'Activations', 'Content', 'Sponsor'];
+const STEPS = ['Scope', 'Activations', 'Add-ons', 'Content', 'Sponsor'];
 
 export function ProposalForm({
   modules,
@@ -48,8 +52,9 @@ export function ProposalForm({
 }) {
   const router = useRouter();
   const editing = !!existing;
-  // When editing, the picking is already done — open on the details.
-  const [step, setStep] = useState(editing ? 3 : 0);
+  // When editing, the picking is already done — open on the details (the last
+  // step, Sponsor).
+  const [step, setStep] = useState(editing ? 4 : 0);
 
   // Step 1 — what's being sold. These only narrow what step 2 offers; the
   // proposal's own event and tier are set in step 3.
@@ -203,6 +208,27 @@ export function ProposalForm({
     )
   );
 
+
+  // Add-on tweaks to each event's included list: labels removed from, and
+  // added on top of, what the tier chart lists. Keyed by event.
+  const [overrides, setOverrides] = useState<
+    Record<string, { removed: string[]; added: string[] }>
+  >(existing?.included_overrides ?? {});
+
+  /** Toggle one benefit label in an event's removed/added list. */
+  const toggleOverride = (
+    eventKey: string,
+    field: 'removed' | 'added',
+    label: string
+  ) =>
+    setOverrides((current) => {
+      const entry = current[eventKey] ?? { removed: [], added: [] };
+      const list = entry[field];
+      const next = list.includes(label)
+        ? list.filter((l) => l !== label)
+        : [...list, label];
+      return { ...current, [eventKey]: { ...entry, [field]: next } };
+    });
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -422,18 +448,90 @@ export function ProposalForm({
    * on the last step, which comes after this one, and hiding it on "not yet
    * decided" would take the option away before the rep had made the choice. */
   const tierAt = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
-  const sessionEvents = onMenu
-    ? menuPicks.some((key) => isSpeaking(key))
-      ? [event]
-      : []
-    : scopedEvents.filter((key) => !tierAt(key) || stageFor(key) !== '');
+  // Decided per event, so each city offers content on its own terms:
+  //   - the à la carte event (Asia) offers one when a speaking item is picked;
+  //   - a tier event offers one when its tier includes a speaking slot
+  //     (Presenting or Diamond), or before a tier has been chosen at all.
+  // Per event rather than collapsing the whole à la carte case to a single
+  // 'both' session — otherwise a both proposal that mixes à la carte in one
+  // city with a speaking tier in the other only ever asked once, labelled
+  // "both", and the saved session belonged to neither city on the proposal.
+  const sessionEvents = scopedEvents.filter((key) =>
+    onMenu && key === menuEvent
+      ? menuPicks.some((pick) => isSpeaking(pick))
+      : !tierAt(key) || stageFor(key) !== ''
+  );
   const contentOffered = sessionEvents.length > 0;
 
-  // Changing the tier while standing on the content step would otherwise
-  // leave the rep on a step that no longer renders anything.
+  // Add-ons: per event, the tier table for that city, the benefits its tier
+  // already includes (which the rep may drop), and the benefits elsewhere in
+  // that chart it doesn't include (which the rep may add on). An à la carte
+  // event has no tier chart, so it offers no add-ons.
+  const tierTableFor = (eventKey: string) =>
+    modules.find(
+      (m) => m.category === 'tier-table' && (m.region || '').toLowerCase() === eventKey
+    );
+
+  const includedRows = (eventKey: string) => {
+    const tier = tierAt(eventKey)?.toLowerCase();
+    const table = tierTableFor(eventKey);
+    if (!tier || !table) return [] as string[];
+    return (table.tier_rows ?? [])
+      .filter((row) => !hidesKioskRow(includeKiosk, row.label))
+      .filter((row) => {
+        const v = row.values[tier]?.trim();
+        return v && !NOT_INCLUDED.test(v);
+      })
+      .map((row) => row.label);
+  };
+
+  const addableRows = (eventKey: string) => {
+    const table = tierTableFor(eventKey);
+    if (!tierAt(eventKey) || !table) return [] as string[];
+    const already = new Set(includedRows(eventKey));
+    return (table.tier_rows ?? [])
+      .filter((row) => !hidesKioskRow(includeKiosk, row.label))
+      .filter((row) => !already.has(row.label))
+      // Only rows some other tier actually grants — a line that's a dash in
+      // every column is a header or a not-offered row, not an add-on.
+      .filter((row) =>
+        Object.values(row.values).some((v) => {
+          const t = v?.trim();
+          return t && !NOT_INCLUDED.test(t);
+        })
+      )
+      .map((row) => row.label);
+  };
+
+  // The events whose tier has an included list to tweak — tier-based (not à la
+  // carte) with a tier chosen and a chart to read. Kept out until a tier is
+  // picked, so the step never shows an empty list.
+  const addOnEvents = scopedEvents.filter(
+    (key) => !(onMenu && key === menuEvent) && !!tierAt(key) && !!tierTableFor(key)
+  );
+  const addOnOffered = addOnEvents.length > 0;
+  // Whether the rep has actually changed anything — drives the custom-pricing
+  // note below and whether overrides are worth saving.
+  const hasOverrides = addOnEvents.some((key) => {
+    const ov = overrides[key];
+    return (ov?.removed?.length ?? 0) > 0 || (ov?.added?.length ?? 0) > 0;
+  });
+
+  // The Add-ons (2) and Content (3) steps can each vanish when the scope
+  // changes underneath them; step past one that no longer renders anything
+  // rather than stranding the rep on a blank panel.
   useEffect(() => {
-    if (step === 2 && !contentOffered) setStep(3);
+    if (step === 2 && !addOnOffered) setStep(contentOffered ? 3 : 4);
+  }, [step, addOnOffered, contentOffered]);
+  useEffect(() => {
+    if (step === 3 && !contentOffered) setStep(4);
   }, [step, contentOffered]);
+
+  // Adding on or dropping benefits means the tier's list price no longer
+  // matches the package, so pricing switches to custom for the rep to set.
+  useEffect(() => {
+    if (hasOverrides) setPricingMode('custom');
+  }, [hasOverrides]);
 
   /**
    * Loads each event's agenda as soon as a session is wanted there, rather
@@ -562,6 +660,18 @@ export function ProposalForm({
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
           includeKiosk,
+          // Only events still in scope, and only where something was actually
+          // changed — so a tier swap that removed an event drops its stale tweaks.
+          includedOverrides: hasOverrides
+            ? addOnEvents.reduce<Record<string, { removed: string[]; added: string[] }>>(
+                (acc, key) => {
+                  const ov = overrides[key];
+                  if (ov && (ov.removed.length || ov.added.length)) acc[key] = ov;
+                  return acc;
+                },
+                {}
+              )
+            : undefined,
           contentSessions: sessionEvents
             .map((key) => ({ key, draft: draftFor(key) }))
             .filter(({ draft }) => draft.include && draft.heading.trim())
@@ -600,7 +710,14 @@ export function ProposalForm({
     <div>
       <ol className="mb-8 flex flex-wrap gap-2">
         {STEPS.map((name, i) => (
-          <li key={name} className={i === 2 && !contentOffered ? 'hidden' : undefined}>
+          <li
+            key={name}
+            className={
+              (i === 2 && !addOnOffered) || (i === 3 && !contentOffered)
+                ? 'hidden'
+                : undefined
+            }
+          >
             {/* Steps are navigable, not locked: changing the scope after
                 picking shouldn't mean starting again. */}
             <button
@@ -875,14 +992,107 @@ export function ProposalForm({
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
-            <Button onClick={() => setStep(contentOffered ? 2 : 3)}>
+            <Button onClick={() => setStep(addOnOffered ? 2 : contentOffered ? 3 : 4)}>
+              {addOnOffered ? 'Add-ons' : contentOffered ? 'Content Proposal' : 'Sponsor details'}
+            </Button>
+          </div>
+        </StepPanel>
+      )}
+
+      {step === 2 && addOnOffered && (
+        <StepPanel title="Add-ons" hint="Tune what each tier includes">
+          <p className="mb-6 text-sm text-neutral-400">
+            Everything the tier includes is listed below. Remove anything you&apos;re
+            not offering, and add on anything extra from the same chart. Any change
+            here switches the package to custom pricing on the last step.
+          </p>
+          {addOnEvents.map((key) => {
+            const tier = tierAt(key);
+            const ov = overrides[key] ?? { removed: [], added: [] };
+            const removed = new Set(ov.removed);
+            const added = new Set(ov.added);
+            const included = includedRows(key);
+            const addable = addableRows(key);
+
+            return (
+              <div key={key} className="mb-8 border-b border-neutral-800 pb-6 last:border-0">
+                {bothEvents && (
+                  <div className="mb-3 text-lg font-bold lowercase tracking-[0.35em] text-neutral-300">
+                    {key === 'nyc' ? 'new york' : key}
+                  </div>
+                )}
+
+                <Fieldset label={`Included in ${tier}`} hint="Remove anything not in this package.">
+                  {included.length === 0 ? (
+                    <p className="text-sm text-neutral-500">Nothing listed for this tier.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {included.map((benefit) => {
+                        const off = removed.has(benefit);
+                        return (
+                          <li key={benefit}>
+                            <button
+                              type="button"
+                              onClick={() => toggleOverride(key, 'removed', benefit)}
+                              className={`flex w-full items-center gap-3 border px-3 py-2 text-left text-sm ${
+                                off
+                                  ? 'border-neutral-800 text-neutral-600 line-through'
+                                  : 'border-neutral-700 text-neutral-200'
+                              }`}
+                            >
+                              <span aria-hidden>{off ? '+' : '✓'}</span>
+                              <span className="flex-1">{benefit}</span>
+                              <span className="text-xs text-neutral-500">
+                                {off ? 'Add back' : 'Remove'}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </Fieldset>
+
+                {addable.length > 0 && (
+                  <Fieldset label="Add on" hint="Extras from the chart not normally in this tier.">
+                    <ul className="space-y-1.5">
+                      {addable.map((benefit) => {
+                        const on = added.has(benefit);
+                        return (
+                          <li key={benefit}>
+                            <button
+                              type="button"
+                              onClick={() => toggleOverride(key, 'added', benefit)}
+                              className={`flex w-full items-center gap-3 border px-3 py-2 text-left text-sm ${
+                                on
+                                  ? 'border-neutral-500 bg-neutral-800 text-neutral-100'
+                                  : 'border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                              }`}
+                            >
+                              <span aria-hidden>{on ? '✓' : '+'}</span>
+                              <span className="flex-1">{benefit}</span>
+                              <span className="text-xs text-neutral-500">{on ? 'Added' : 'Add'}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Fieldset>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="mt-6 flex gap-2">
+            <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
+            <Button onClick={() => setStep(contentOffered ? 3 : 4)}>
               {contentOffered ? 'Content Proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
       )}
 
-      {step === 2 && contentOffered && (
+      {step === 3 && contentOffered && (
         <StepPanel title="Content Proposal" hint="Optional">
           {sessionEvents.map((key) => {
             const label = EVENTS.find((e) => e.key === key)?.label ?? key;
@@ -1016,13 +1226,13 @@ export function ProposalForm({
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
-            <Button onClick={() => setStep(3)}>Sponsor details</Button>
+            <Button variant="secondary" onClick={() => setStep(addOnOffered ? 2 : 1)}>Back</Button>
+            <Button onClick={() => setStep(4)}>Sponsor details</Button>
           </div>
         </StepPanel>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <StepPanel title="Sponsor details" hint={`${cart.length} activations selected`}>
           <div className="grid gap-x-10 md:grid-cols-2">
             <div>
@@ -1291,20 +1501,30 @@ export function ProposalForm({
 
               {chargeLines.length > 0 && (
               <Fieldset label="Pricing">
-                <div className="flex gap-2">
-                  {(['standard', 'custom'] as const).map((mode) => (
-                    <Choice
-                      key={mode}
-                      selected={pricingMode === mode}
-                      // Deliberately no prefill: an empty box lets the
-                      // placeholder show the standard price, and a blank field
-                      // already means "charge the standard price".
-                      onClick={() => setPricingMode(mode)}
-                    >
-                      {mode === 'standard' ? 'Standard pricing' : 'Custom pricing'}
-                    </Choice>
-                  ))}
-                </div>
+                {hasOverrides ? (
+                  // Add-ons change what the package is, so the tier's list price
+                  // no longer fits — pricing is locked to custom with a nudge to
+                  // set it below.
+                  <p className="text-sm text-neutral-400">
+                    Additional items have been added or removed, so this package is
+                    priced custom — please set the price for it below.
+                  </p>
+                ) : (
+                  <div className="flex gap-2">
+                    {(['standard', 'custom'] as const).map((mode) => (
+                      <Choice
+                        key={mode}
+                        selected={pricingMode === mode}
+                        // Deliberately no prefill: an empty box lets the
+                        // placeholder show the standard price, and a blank field
+                        // already means "charge the standard price".
+                        onClick={() => setPricingMode(mode)}
+                      >
+                        {mode === 'standard' ? 'Standard pricing' : 'Custom pricing'}
+                      </Choice>
+                    ))}
+                  </div>
+                )}
               </Fieldset>
 
               )}
@@ -1447,7 +1667,7 @@ export function ProposalForm({
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(contentOffered ? 2 : 1)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : addOnOffered ? 2 : 1)}>Back</Button>
             <Button disabled={submitting} onClick={generate}>
               {submitting ? 'Saving…' : editing ? 'Save changes' : 'Generate proposal'}
             </Button>

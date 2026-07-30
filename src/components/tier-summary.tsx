@@ -76,10 +76,21 @@ export function TierIncluded({
   if (!tier) return null;
 
   const key = tier.toLowerCase();
-  const included = (tierTable?.tier_rows ?? [])
+  // The rep's Add-on tweaks for this (single-event) deal: drop what they
+  // removed, then append what they added on from elsewhere in the chart.
+  const ov = proposal.included_overrides?.[proposal.event ?? ''] ?? { removed: [], added: [] };
+  const removed = new Set(ov.removed ?? []);
+  const base = (tierTable?.tier_rows ?? [])
     .filter((row) => !hidesKioskRow(proposal.include_kiosk, row.label))
     .map((row) => ({ label: row.label, value: row.values[key] }))
-    .filter((row) => row.value && !NOT_INCLUDED.test(row.value.trim()));
+    .filter((row) => row.value && !NOT_INCLUDED.test(row.value.trim()))
+    .filter((row) => !removed.has(row.label));
+  const added = (ov.added ?? [])
+    .filter((label) => !base.some((row) => row.label === label))
+    // Added-on benefits carry no quantity of their own, so they read as a plain
+    // "Included" rather than borrowing a number from another tier's column.
+    .map((label) => ({ label, value: 'Included' as string | undefined }));
+  const included = [...base, ...added];
 
   return (
     <section className="mx-auto max-w-6xl px-10 pb-8 pt-16">

@@ -87,11 +87,19 @@ export function TierGrid({
     });
   });
 
+  // The rep's Add-on tweaks, keyed by event: drop what they removed from a
+  // city's column, add on what they added even where the chart says "—".
+  const overrides = proposal.included_overrides ?? {};
+
   const valueFor = (column: Column, label: string) => {
+    const ov = overrides[column.event];
+    if (ov?.removed?.includes(label)) return null;
     if (column.items) return column.items.includes(label) ? 'Included' : null;
     const row = (column.table?.tier_rows ?? []).find((r) => r.label === label);
     const raw = row?.values[column.tier.toLowerCase()]?.trim();
-    if (!raw || NOT_INCLUDED.test(raw)) return null;
+    if (!raw || NOT_INCLUDED.test(raw)) {
+      return ov?.added?.includes(label) ? 'Included' : null;
+    }
     return raw === '✔' ? 'Included' : raw;
   };
 
