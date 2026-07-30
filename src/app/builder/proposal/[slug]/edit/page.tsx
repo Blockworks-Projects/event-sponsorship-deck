@@ -51,6 +51,7 @@ export default async function EditProposalPage({
           modules={(modules ?? []) as SponsorshipModule[]}
           existing={proposal as Proposal}
           existingModuleIds={(links ?? []).map((l) => l.module_id)}
+          nycOnly={(proposal as Proposal).event === 'nyc'}
         />
       </div>
     </div>

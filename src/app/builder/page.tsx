@@ -111,6 +111,8 @@ export default async function BuilderHomePage({
             >
               Sponsorship Deck
             </Link>
+            {/* One entry: it opens the year chooser (2026 Asia/London vs 2027
+                New York), so the two can't be mixed. */}
             <Link
               href="/builder/new"
               className="bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"

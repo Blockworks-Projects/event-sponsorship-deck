@@ -8,6 +8,7 @@
 
 const WORDMARK_ASSET: Record<string, string> = {
   london: '/brand/das-london-wordmark.svg',
+  nyc: '/brand/das-nyc-wordmark.png',
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -27,7 +28,7 @@ export function DasWordmark({ event, accent }: { event: string | null; accent: s
   if (asset) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={asset} alt={`Digital Asset Summit 2026 ${EVENT_LABEL[key]}`}
+      <img src={asset} alt={`Digital Asset Summit ${EVENT_LABEL[key]}`}
         className="mx-auto block h-auto w-[min(560px,88%)]" />
     );
   }

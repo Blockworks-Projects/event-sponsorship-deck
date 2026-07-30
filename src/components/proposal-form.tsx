@@ -43,8 +43,13 @@ const EVENTS = [
   { key: 'asia', label: 'Asia' },
   { key: 'london', label: 'London' },
 ];
+// New York is its own side of the builder: not part of the Asia/London "both"
+// flow, but a single-event proposal can be for it — so it joins the list used
+// to resolve one event's tiers and activations.
+const NYC_EVENT = { key: 'nyc', label: 'New York' };
+const ALL_EVENTS = [...EVENTS, NYC_EVENT];
 
-type EventFilter = 'london' | 'asia' | 'both';
+type EventFilter = 'london' | 'asia' | 'both' | 'nyc';
 
 const STEPS = ['Scope', 'Activations', 'Add-ons', 'Content', 'Sponsor'];
 
@@ -53,6 +58,7 @@ export function ProposalForm({
   existing,
   existingModuleIds,
   signedInAs,
+  nycOnly,
 }: {
   modules: SponsorshipModule[];
   /** The signed-in rep, used to prefill their own details. */
@@ -60,6 +66,9 @@ export function ProposalForm({
   /** Present when editing rather than creating. */
   existing?: Proposal;
   existingModuleIds?: string[];
+  /** The New York side: the event is fixed to NYC and the Asia/London/Both
+   *  picker (and à la carte, which is Asia-only) never appears. */
+  nycOnly?: boolean;
 }) {
   const router = useRouter();
   const editing = !!existing;
@@ -70,7 +79,7 @@ export function ProposalForm({
   // Step 1 — what's being sold. These only narrow what step 2 offers; the
   // proposal's own event and tier are set in step 3.
   const [eventFilter, setEventFilter] = useState<EventFilter>(
-    (existing?.event as EventFilter) ?? 'london'
+    (existing?.event as EventFilter) ?? (nycOnly ? 'nyc' : 'london')
   );
   const [tierFilter, setTierFilter] = useState<string[]>([]);
 
@@ -196,7 +205,7 @@ export function ProposalForm({
   // the section from the proposal.
   const [includeKiosk, setIncludeKiosk] = useState(existing?.include_kiosk !== false);
   // Matches the eventFilter default, so the two can't start out of step.
-  const [event, setEvent] = useState<string>(existing?.event ?? 'london');
+  const [event, setEvent] = useState<string>(existing?.event ?? (nycOnly ? 'nyc' : 'london'));
   const [sponsorTier, setSponsorTier] = useState(existing?.tier ?? '');
   // Both-events proposals buy a tier at each, and they can differ.
   const [tiersByEvent, setTiersByEvent] = useState<Record<string, string>>(existing?.tiers ?? {});
@@ -283,7 +292,7 @@ export function ProposalForm({
    */
   const groups = useMemo(() => {
     const sellingItems = saleMode === 'menu';
-    const wanted = (eventFilter === 'both' ? EVENTS : EVENTS.filter((e) => e.key === eventFilter))
+    const wanted = (eventFilter === 'both' ? EVENTS : ALL_EVENTS.filter((e) => e.key === eventFilter))
       // A city sold à la carte picks its items from the menu, not from the
       // tier lists — showing both would offer the same activation twice.
       .filter((e) => !(sellingItems && A_LA_CARTE_EVENTS.includes(e.key)));
@@ -398,7 +407,7 @@ export function ProposalForm({
   const chargeLines = bothEvents
     ? priceLines.map((line) => ({ key: line.key, label: line.label, tier: line.tier, list: line.price }))
     : event && sponsorTier
-    ? [{ key: event, label: EVENTS.find((e) => e.key === event)?.label ?? event, tier: sponsorTier, list: listPrice }]
+    ? [{ key: event, label: ALL_EVENTS.find((e) => e.key === event)?.label ?? event, tier: sponsorTier, list: listPrice }]
     : [];
 
   /** What each event is actually being charged, honouring custom pricing. */
@@ -760,19 +769,25 @@ export function ProposalForm({
 
       {step === 0 && (
         <StepPanel title="What are you selling?">
-          <Fieldset label="Event">
-            <div className="flex flex-wrap gap-2">
-              {[...EVENTS, { key: 'both', label: 'Both' }].map((e) => (
-                <Choice
-                  key={e.key}
-                  selected={eventFilter === e.key}
-                  onClick={() => chooseEventFilter(e.key as EventFilter)}
-                >
-                  {e.label}
-                </Choice>
-              ))}
-            </div>
-          </Fieldset>
+          {nycOnly ? (
+            <Fieldset label="Event">
+              <p className="text-sm text-neutral-300">New York (DAS 2027)</p>
+            </Fieldset>
+          ) : (
+            <Fieldset label="Event">
+              <div className="flex flex-wrap gap-2">
+                {[...EVENTS, { key: 'both', label: 'Both' }].map((e) => (
+                  <Choice
+                    key={e.key}
+                    selected={eventFilter === e.key}
+                    onClick={() => chooseEventFilter(e.key as EventFilter)}
+                  >
+                    {e.label}
+                  </Choice>
+                ))}
+              </div>
+            </Fieldset>
+          )}
 
           {eventFilter === 'both' ? (
             // Each city is bought separately, so the tier is chosen per city
@@ -1131,7 +1146,7 @@ export function ProposalForm({
       {step === 3 && contentOffered && (
         <StepPanel title="Content Proposal" hint="Optional">
           {sessionEvents.map((key) => {
-            const label = EVENTS.find((e) => e.key === key)?.label ?? key;
+            const label = ALL_EVENTS.find((e) => e.key === key)?.label ?? key;
             const draft = draftFor(key);
             const stage = stageFor(key);
             const agenda = agendas[key];
@@ -1396,14 +1411,16 @@ export function ProposalForm({
                 <p className="text-sm text-neutral-300">
                   {bothEvents
                     ? 'London and Asia'
-                    : EVENTS.find((e) => e.key === event)?.label ?? '—'}
-                  <button
-                    type="button"
-                    onClick={() => setStep(0)}
-                    className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
-                  >
-                    change
-                  </button>
+                    : ALL_EVENTS.find((e) => e.key === event)?.label ?? '—'}
+                  {!nycOnly && (
+                    <button
+                      type="button"
+                      onClick={() => setStep(0)}
+                      className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
+                    >
+                      change
+                    </button>
+                  )}
                 </p>
               </Fieldset>
 

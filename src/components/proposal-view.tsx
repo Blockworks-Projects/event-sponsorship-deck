@@ -40,11 +40,12 @@ const EVENT_SITE: Record<string, string> = {
   asia: 'https://blockworks.com/event/digital-asset-summit-asia',
 };
 
-// The drifting hero geometry, per event, matching the speaker portal. There's
-// no NYC artwork, so those covers simply run without shapes.
+// The drifting hero geometry, per event, matching the speaker portal.
 const EVENT_SHAPES: Record<string, { left: string; right: string }> = {
   london: { left: '/brand/shapeLeftBlue.webp', right: '/brand/shapeRightBlue.webp' },
   asia: { left: '/brand/shapeLeftRed.webp', right: '/brand/shapeRightRed.webp' },
+  // New York (green): the circle drifts left, the cluster drifts right.
+  nyc: { left: '/brand/shapeLeftGreen.png', right: '/brand/shapeRightGreen.png' },
 };
 
 // Each DAS city has its own accent, sampled from the sales deck cover where
