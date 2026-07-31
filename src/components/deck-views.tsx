@@ -74,8 +74,11 @@ export function DeckViews({
 
   const tabs = ['all', ...decks];
 
-  /** The per-slide seconds for one view, in slide order, named where possible. */
-  function breakdown(v: View): { index: number; title: string | null; seconds: number }[] {
+  /** The per-slide seconds for one view, in slide order, named where the deck
+   * has been synced. */
+  function breakdown(
+    v: View
+  ): { index: number; title: string | null; seconds: number }[] {
     const dwell = v.slide_dwell ?? {};
     const known = slidesByDeck[v.deck_key ?? ''] ?? [];
     if (known.length) {
@@ -85,7 +88,7 @@ export function DeckViews({
         seconds: (Number(dwell[String(s.index)]) || 0) / 1000,
       }));
     }
-    // Titles not synced yet: fall back to whatever slide numbers were recorded.
+    // Deck not synced yet: fall back to whatever slide numbers were recorded.
     return Object.entries(dwell)
       .map(([k, ms]) => ({ index: Number(k), title: null, seconds: (Number(ms) || 0) / 1000 }))
       .sort((a, b) => a.index - b.index);

@@ -33,19 +33,50 @@ export default async function DeckLinkPage() {
   const views = viewRows ?? [];
   const uniqueViewers = new Set(views.map((v) => v.viewer_email)).size;
 
-  // Slide titles per deck, from the hourly deck-pages sync, so each viewer's
-  // breakdown can name the slides they lingered on instead of numbering them.
-  const { data: pageRows } = await supabase
-    .from('deck_pages')
-    .select('deck_key, page_index, title')
-    .order('page_index', { ascending: true });
+  // Slide names for the per-viewer breakdown, drawn from two synced sources:
+  //   1. The slide's own title text (deck_pages.title) — clean for section
+  //      slides like "Executive Summary" or "Sponsorship Overview".
+  //   2. The catalog title (sponsorship_modules.title) — names the activation
+  //      slides that render as pure images and have no extractable text.
+  // Both refresh on the same sync, so no manual list to maintain.
+  const [{ data: pageRows }, { data: moduleRows }] = await Promise.all([
+    supabase
+      .from('deck_pages')
+      .select('deck_key, page_index, title')
+      .order('page_index', { ascending: true }),
+    supabase
+      .from('sponsorship_modules')
+      .select('title, display_order, region')
+      .eq('status', 'published'),
+  ]);
+
+  // slide position -> catalog title, per deck. NYC modules name the NYC deck;
+  // London/Asia modules name the das deck. First title at a position wins.
+  const catalogTitle: Record<string, Record<number, string>> = { das: {}, nyc: {} };
+  for (const m of moduleRows ?? []) {
+    const deck = m.region === 'nyc' ? 'nyc' : 'das';
+    const idx = Number(m.display_order);
+    if (Number.isFinite(idx) && m.title && !catalogTitle[deck][idx]) {
+      catalogTitle[deck][idx] = m.title as string;
+    }
+  }
+
+  // A slide title should be short and label-like. A grabbed sentence or
+  // paragraph isn't a title, so it's rejected in favour of the catalog name.
+  const cleanTitle = (t: string | null): string | null => {
+    if (!t) return null;
+    const s = t.trim();
+    if (!s || s.length > 45 || /[.!?]$/.test(s)) return null;
+    return s;
+  };
 
   const slidesByDeck: Record<string, { index: number; title: string | null }[]> = {};
   for (const r of pageRows ?? []) {
-    (slidesByDeck[r.deck_key] ??= []).push({
-      index: r.page_index,
-      title: (r.title as string | null) ?? null,
-    });
+    const name =
+      cleanTitle(r.title as string | null) ??
+      catalogTitle[r.deck_key]?.[r.page_index] ??
+      null;
+    (slidesByDeck[r.deck_key] ??= []).push({ index: r.page_index, title: name });
   }
 
   return (
