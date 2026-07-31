@@ -163,12 +163,6 @@ export function DeckViews({
 
               {isOpen && (
                 <div className="bx-vpanel">
-                  <div className="bx-vpanel-head">
-                    Slides {v.viewer_email} spent time on
-                    {typeof v.duration_seconds === 'number' && v.duration_seconds > 0 && (
-                      <span> · {fmtSeconds(v.duration_seconds)} total</span>
-                    )}
-                  </div>
                   {rows.length > 0 ? (
                     rows.map((r) => {
                       const ratio = r.seconds / max;
