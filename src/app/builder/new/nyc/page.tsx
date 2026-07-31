@@ -25,7 +25,7 @@ export default async function NewNycProposalPage() {
           <div>
             <h1 className="text-2xl font-semibold">New Proposal · New York</h1>
             <p className="mt-1 text-sm text-neutral-400">
-              Digital Asset Summit 2027 (New York). Pick a tier and activations, then
+              Digital Asset Summit NYC. Pick a tier and activations, then
               generate a tracked proposal page.
             </p>
           </div>

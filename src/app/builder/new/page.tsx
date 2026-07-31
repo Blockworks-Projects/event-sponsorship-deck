@@ -23,9 +23,6 @@ export default function NewProposalChooser() {
               2026
             </div>
             <div className="mt-2 text-xl font-semibold text-neutral-100">Asia &amp; London</div>
-            <p className="mt-2 text-sm text-neutral-400">
-              Digital Asset Summit 2026 — one city or both.
-            </p>
           </Link>
 
           <Link
@@ -39,9 +36,6 @@ export default function NewProposalChooser() {
               2027
             </div>
             <div className="mt-2 text-xl font-semibold text-neutral-100">New York</div>
-            <p className="mt-2 text-sm text-neutral-400">
-              Digital Asset Summit 2027 — New York only.
-            </p>
           </Link>
         </div>
       </div>

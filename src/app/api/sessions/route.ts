@@ -63,6 +63,11 @@ export async function GET(req: NextRequest) {
   const stage = (req.nextUrl.searchParams.get('stage') || '').toLowerCase();
   const table = AGENDA_TABLE[event];
   if (!table) {
+    // New York's agenda isn't published yet — return an empty list (not an
+    // error) so the content step still works; the builder shows a pending note.
+    if (event === 'nyc') {
+      return NextResponse.json({ sessions: [] });
+    }
     return NextResponse.json(
       { error: `No agenda for "${event}". Use london or asia.` },
       { status: 400 }

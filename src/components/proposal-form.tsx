@@ -774,7 +774,7 @@ export function ProposalForm({
         <StepPanel title="What are you selling?">
           {nycOnly ? (
             <Fieldset label="Event">
-              <p className="text-sm text-neutral-300">New York (DAS 2027)</p>
+              <p className="text-sm text-neutral-300">New York</p>
             </Fieldset>
           ) : (
             <Fieldset label="Event">
@@ -1204,6 +1204,8 @@ export function ProposalForm({
                       hint={
                         agendaLoading && !agenda
                           ? 'Loading the agenda…'
+                          : key === 'nyc' && !agenda?.length
+                          ? 'Pending DAS NYC 2027 Agenda'
                           : stage === 'main'
                           ? 'Main Stage sessions'
                           : stage === 'track'
@@ -1229,6 +1231,8 @@ export function ProposalForm({
                             ? 'Loading…'
                             : agenda?.length
                             ? 'No session yet'
+                            : key === 'nyc'
+                            ? 'Pending DAS NYC 2027 Agenda'
                             : 'No sessions available'}
                         </option>
                         {agenda?.map((s) => (

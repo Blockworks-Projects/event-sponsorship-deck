@@ -38,6 +38,7 @@ const ALL_EVENTS_SITE = 'https://blockworks.com/events';
 const EVENT_SITE: Record<string, string> = {
   london: 'https://blockworks.com/event/digital-asset-summit-london',
   asia: 'https://blockworks.com/event/digital-asset-summit-asia',
+  nyc: 'https://blockworks.com/events',
 };
 
 // The drifting hero geometry, per event, matching the speaker portal.
