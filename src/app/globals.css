@@ -620,6 +620,21 @@
 .bx-deckchip.nyc { --bx-d: var(--bx-nyc); }
 .bx-vtime { font-size: 12.5px; color: var(--bx-faint); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
+/* expandable viewer rows: click a person to see the slides they read */
+.bx-vitem { border-bottom: 1px solid var(--bx-border-soft); }
+.bx-vitem:last-child { border-bottom: none; }
+.bx-vitem .bx-vrow { border-bottom: none; }
+.bx-vrow.clickable { cursor: pointer; border-radius: 8px; transition: background 0.12s ease; outline: none; }
+.bx-vrow.clickable:hover { background: var(--bx-raised); }
+.bx-vrow.clickable:focus-visible { box-shadow: inset 0 0 0 1px var(--bx-border); }
+.bx-vrow.open { background: var(--bx-raised); }
+.bx-vcaret { color: var(--bx-faint); font-size: 15px; line-height: 1; width: 10px; flex-shrink: 0; transition: transform 0.14s ease; }
+.bx-vcaret.open { transform: rotate(90deg); color: var(--bx-muted); }
+.bx-vpanel { padding: 4px 6px 14px 30px; }
+.bx-vpanel-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--bx-faint); padding: 6px 12px 10px; }
+.bx-vpanel-empty { font-size: 12.5px; color: var(--bx-faint); padding: 4px 12px 8px; margin: 0; }
+.bx-heat-row .name.skipped { color: var(--bx-faint); }
+
 /* slide engagement heatmap */
 .bx-heat-legend { display: flex; gap: 14px; font-size: 11px; color: var(--bx-faint); }
 .bx-heat-legend span { display: inline-flex; align-items: center; gap: 6px; }
