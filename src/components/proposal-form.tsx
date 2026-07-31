@@ -1034,7 +1034,7 @@ export function ProposalForm({
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
             <Button onClick={() => setStep(addOnOffered ? 2 : contentOffered ? 3 : 4)}>
-              {addOnOffered ? 'Add-ons' : contentOffered ? 'Content Proposal' : 'Sponsor details'}
+              {addOnOffered ? 'Add-ons' : contentOffered ? 'Content proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
@@ -1139,14 +1139,14 @@ export function ProposalForm({
           <div className="mt-6 flex gap-2">
             <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
             <Button onClick={() => setStep(contentOffered ? 3 : 4)}>
-              {contentOffered ? 'Content Proposal' : 'Sponsor details'}
+              {contentOffered ? 'Content proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
       )}
 
       {step === 3 && contentOffered && (
-        <StepPanel title="Content Proposal" hint="Optional">
+        <StepPanel title="Content proposal" hint="Optional">
           {sessionEvents.map((key) => {
             const label = ALL_EVENTS.find((e) => e.key === key)?.label ?? key;
             const draft = draftFor(key);
@@ -1238,7 +1238,7 @@ export function ProposalForm({
                           <option key={s.id} value={s.id}>
                             {s.title}
                             {s.speakers.length
-                              ? ` — ${s.speakers.map((sp) => sp.name).join(', ')}`
+                              ? ` · ${s.speakers.map((sp) => sp.name).join(', ')}`
                               : ''}
                           </option>
                         ))}
@@ -1294,8 +1294,8 @@ export function ProposalForm({
       )}
 
       {step === 4 && (
-        <StepPanel title="Sponsor details" hint={`${cart.length} activations selected`}>
-          <div className="bx-form-grid">
+        <StepPanel title="Sponsor details" hint={`${cart.length} activation${cart.length === 1 ? '' : 's'} selected`}>
+          <div className="bx-sponsor-grid">
             <div>
               <Fieldset
                 label="Company"
@@ -1330,7 +1330,7 @@ export function ProposalForm({
               </Fieldset>
               <Fieldset
                 label="Contact email"
-                hint="The proposal page only opens for this address."
+                hint="The proposal opens only for the addresses here. Separate more than one with a semicolon."
                 required
               >
                 <Input
@@ -1411,7 +1411,7 @@ export function ProposalForm({
               </Fieldset>
             </div>
 
-            <div className="bx-pricecard">
+            <div className="bx-dealcol">
               {/* Never re-asked: the scope in step 1 decided it. */}
               <Fieldset label="Event">
                 <p className="text-sm text-neutral-300">
@@ -1683,11 +1683,7 @@ export function ProposalForm({
                 </Fieldset>
               )}
 
-              <Fieldset
-                label="Note to the sponsor"
-                hint="Write in any bonus here. Shown under the tier grid, signed with your name."
-                stackHint
-              >
+              <Fieldset label="Note to the sponsor">
                 <textarea
                   value={introNote}
                   onChange={(e) => setIntroNote(e.target.value)}

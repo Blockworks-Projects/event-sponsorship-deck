@@ -347,6 +347,12 @@
   --bx-radius-sm: 8px;
   --bx-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
+  /* The app is square-cornered by default (--radius: 0) to match the sponsor
+     portals; the builder wants a softer, rounded feel. Overriding --radius here
+     rounds every shadcn component (buttons, inputs) used inside the builder,
+     while proposal pages outside .builder-ui stay square. */
+  --radius: 8px;
+
   min-height: 100vh;
   background:
     radial-gradient(1200px 600px at 82% -12%, rgba(61,99,255,0.06), transparent 60%),
@@ -405,6 +411,7 @@
 .bx-stat .v { font-size: 25px; font-weight: 800; letter-spacing: -0.02em; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .bx-stat .v small { font-size: 13px; color: var(--bx-muted); font-weight: 500; }
 .bx-stat.accent .v { color: var(--bx-nyc); }
+.bx-stat.purple .v { color: #A78BFA; }
 
 /* chips / filters */
 .bx-filters { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -421,7 +428,7 @@
 .bx-ev.london { --bx-e: var(--bx-london); }
 .bx-ev.asia { --bx-e: var(--bx-asia); }
 .bx-ev.nyc { --bx-e: var(--bx-nyc); }
-.bx-ev.both { --bx-e: linear-gradient(135deg, var(--bx-london) 50%, var(--bx-asia) 50%); }
+.bx-ev.both { --bx-e: linear-gradient(90deg, var(--bx-london) 50%, var(--bx-asia) 50%); }
 
 /* status pill */
 .bx-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; }
@@ -552,6 +559,11 @@
 
 /* form fields */
 .bx-form-grid { display: grid; grid-template-columns: 1fr 300px; gap: 26px; align-items: start; }
+/* sponsor step: sponsor/rep fields on the left, the deal (event/tier/pricing) grouped on the right */
+.bx-sponsor-grid { display: grid; grid-template-columns: 1fr 380px; gap: 26px; align-items: start; }
+.bx-dealcol { border: 1px solid var(--bx-border); border-radius: var(--bx-radius); background: var(--bx-surface); padding: 18px 20px; }
+.bx-dealcol .bx-field:last-child { margin-bottom: 0; }
+@media (max-width: 860px) { .bx-sponsor-grid { grid-template-columns: 1fr; } }
 .bx-field { margin-bottom: 15px; }
 .bx-flabel { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bx-faint); font-weight: 600; display: block; margin-bottom: 7px; }
 .bx-flabel .opt { color: var(--bx-faint); text-transform: none; letter-spacing: 0; font-weight: 500; }

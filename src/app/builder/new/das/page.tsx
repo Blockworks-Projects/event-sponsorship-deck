@@ -23,7 +23,7 @@ export default async function NewDasProposalPage() {
       <div className="bx-page-head">
         <div>
           <h1 className="bx-h1">New proposal · Asia &amp; London</h1>
-          <div className="bx-sub">Digital Asset Summit 2026 — one city or both.</div>
+          <div className="bx-sub">Digital Asset Summit 2026. One city or both.</div>
         </div>
         <SyncButton />
       </div>

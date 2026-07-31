@@ -107,10 +107,7 @@ export default async function BuilderHomePage({
       <div className="bx-page-head">
         <div>
           <h1 className="bx-h1">Proposals</h1>
-          <div className="bx-sub">
-            Everything the team has built, newest first
-            {email ? ` · signed in as ${email}` : ''}.
-          </div>
+          <div className="bx-sub">Everything the team has built</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Link href="/builder/deck" className="bx-btn bx-btn-ghost">
@@ -131,7 +128,7 @@ export default async function BuilderHomePage({
           <div className="k">Opened by sponsors</div>
           <div className="v">{openedCount}</div>
         </div>
-        <div className="bx-stat accent">
+        <div className="bx-stat purple">
           <div className="k">Pipeline</div>
           <div className="v">{pipeline > 0 ? compactMoney(pipeline) : '—'}</div>
         </div>
