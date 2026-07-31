@@ -620,6 +620,26 @@
 .bx-deckchip.nyc { --bx-d: var(--bx-nyc); }
 .bx-vtime { font-size: 12.5px; color: var(--bx-faint); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
+/* slide engagement heatmap */
+.bx-heat-legend { display: flex; gap: 14px; font-size: 11px; color: var(--bx-faint); }
+.bx-heat-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.bx-heat-legend .d { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.bx-heat-legend .d.cool { background: #5B7CFA; }
+.bx-heat-legend .d.warm { background: var(--bx-amber); }
+.bx-heat-legend .d.hot { background: var(--bx-asia); }
+.bx-heat-row { display: grid; grid-template-columns: 26px minmax(110px, 1.1fr) 3fr 66px; align-items: center; gap: 14px; padding: 9px 12px; border-radius: 8px; }
+.bx-heat-row:hover { background: var(--bx-raised); }
+.bx-heat-row .n { font-family: var(--bx-mono); font-size: 12px; color: var(--bx-faint); text-align: right; }
+.bx-heat-row .name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bx-heat-row .name.hot { font-weight: 600; }
+.bx-heat-track { height: 12px; border-radius: 6px; background: #0F1216; border: 1px solid var(--bx-border-soft); overflow: hidden; }
+.bx-heat-fill { height: 100%; border-radius: 6px 0 0 6px; }
+.bx-heat-fill.cool { background: #5B7CFA; }
+.bx-heat-fill.warm { background: var(--bx-amber); }
+.bx-heat-fill.hot { background: var(--bx-asia); }
+.bx-heat-row .t { font-family: var(--bx-mono); font-size: 12.5px; text-align: right; color: var(--bx-muted); font-variant-numeric: tabular-nums; }
+.bx-heat-row .t.hot { color: var(--bx-asia); font-weight: 600; }
+
 /* login */
 .bx-login { min-height: 100vh; display: grid; place-items: center; padding: 40px 20px; background: radial-gradient(680px 420px at 50% -5%, rgba(18,185,129,0.06), transparent 70%); }
 .bx-login-card { width: 100%; max-width: 344px; }

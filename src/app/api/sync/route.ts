@@ -152,6 +152,7 @@ async function syncOneDeck_(
       deck_key: string;
       page_index: number;
       image_url: string;
+      title: string | null;
       updated_at: string;
     }[] = [];
     for (const page of body.pages) {
@@ -162,6 +163,9 @@ async function syncOneDeck_(
           deck_key: deckKey,
           page_index: page.index,
           image_url: url,
+          // Title, when the Apps Script sends one, so the engagement heatmap
+          // can name slides. Older script versions omit it — hence nullable.
+          title: (page.title as string | undefined)?.trim() || null,
           updated_at: new Date().toISOString(),
         });
       }

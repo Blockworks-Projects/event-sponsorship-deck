@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { emailList, isAddressedTo } from '@/lib/contacts';
+import { notifyOpen } from '@/lib/notify';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -72,6 +73,15 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Ping Slack on the first open of this target by this viewer today. Awaited
+  // so it runs before the serverless function freezes, but wrapped so a
+  // notification failure never turns a logged view into an error.
+  try {
+    await notifyOpen({ address, deckType, deckKey, proposalId });
+  } catch {
+    // best-effort
   }
 
   return NextResponse.json({ viewId: data.id });

@@ -6,7 +6,7 @@
 // so nothing here is per-recipient. It exists for the case where a rep wants
 // to send the deck before there's a deal to quote, and still know who opened
 // it.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 
 export interface Deck {
@@ -21,12 +21,90 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
   const [openDeck, setOpenDeck] = useState<Deck | null>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // The logged view for the deck currently open, so slide-dwell can be attached
+  // to it. Null while a fresh open is still being recorded.
+  const [viewId, setViewId] = useState<string | null>(null);
+
+  // Per-slide engagement accumulators for the open deck. Refs, not state — they
+  // change every second and must not trigger re-renders.
+  const dwellRef = useRef<Record<number, number>>({});
+  const focusedMsRef = useRef(0);
+  const visibleRef = useRef<Set<number>>(new Set());
+  const pagesRef = useRef<HTMLDivElement | null>(null);
 
   // Opening or switching a deck is a page change in spirit: start it at the
   // top rather than leaving the reader wherever the last deck was scrolled.
   useEffect(() => {
     if (openDeck) window.scrollTo(0, 0);
   }, [openDeck]);
+
+  // Measure how long each slide is actually on screen (and the tab focused),
+  // reporting it against the current view so the builder can draw a heatmap.
+  useEffect(() => {
+    const container = pagesRef.current;
+    if (!viewId || !openDeck || openDeck.pages.length === 0 || !container) return;
+
+    // Fresh accumulators for this view.
+    dwellRef.current = {};
+    focusedMsRef.current = 0;
+    visibleRef.current = new Set();
+
+    const slides = Array.from(container.querySelectorAll<HTMLElement>('[data-slide]'));
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const idx = Number((entry.target as HTMLElement).dataset.slide);
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) visibleRef.current.add(idx);
+          else visibleRef.current.delete(idx);
+        }
+      },
+      { threshold: [0, 0.5, 1] }
+    );
+    slides.forEach((el) => io.observe(el));
+
+    // Only count time while the tab is focused, so a deck left open in a
+    // background tab doesn't read as an hour of rapt attention.
+    const tick = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      focusedMsRef.current += 1000;
+      visibleRef.current.forEach((idx) => {
+        dwellRef.current[idx] = (dwellRef.current[idx] ?? 0) + 1000;
+      });
+    }, 1000);
+
+    const flush = (beacon = false) => {
+      const payload = JSON.stringify({
+        viewId,
+        slideDwell: dwellRef.current,
+        durationSeconds: Math.round(focusedMsRef.current / 1000),
+      });
+      if (beacon && navigator.sendBeacon) {
+        navigator.sendBeacon('/api/deck-views/track', new Blob([payload], { type: 'application/json' }));
+      } else {
+        fetch('/api/deck-views/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    };
+
+    const heartbeat = window.setInterval(() => flush(false), 15000);
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush(true);
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', () => flush(true));
+
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', onHide);
+      io.disconnect();
+      flush(true);
+    };
+  }, [viewId, openDeck]);
 
   async function handleGate(e: React.FormEvent) {
     e.preventDefault();
@@ -46,12 +124,20 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
   /** Records which deck was opened, then shows it. */
   async function openOne(deck: Deck) {
     setOpenDeck(deck);
-    // Fire and forget: a failed log shouldn't stand between them and the deck.
-    fetch('/api/deck-views', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deckType: 'public', viewerEmail: email, deckKey: deck.key }),
-    }).catch(() => undefined);
+    // Stop attributing dwell to the previous deck until the new view is logged.
+    setViewId(null);
+    try {
+      const res = await fetch('/api/deck-views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deckType: 'public', viewerEmail: email, deckKey: deck.key }),
+      });
+      const body = await res.json().catch(() => ({}));
+      // Attach dwell tracking to this view once it's logged.
+      if (body?.viewId) setViewId(body.viewId as string);
+    } catch {
+      // A failed log shouldn't stand between them and the deck.
+    }
   }
 
   if (!unlocked) {
@@ -155,11 +241,13 @@ export function PublicDeckView({ decks, embedUrl }: { decks: Deck[]; embedUrl?: 
       {/* Our own rendered pages, scrolling — the same treatment a proposal's
           deck view uses, rather than Google's black-bar embed. */}
       {pages.length > 0 ? (
-        <div className="mx-auto max-w-[1240px] py-8">
+        <div className="mx-auto max-w-[1240px] py-8" ref={pagesRef}>
           {pages.map((src, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={i}
+              // 1-based to match how the pages are numbered in deck_pages.
+              data-slide={i + 1}
               src={src}
               alt={`Slide ${i + 1}`}
               className="block w-full mix-blend-multiply"
