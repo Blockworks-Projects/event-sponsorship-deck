@@ -325,8 +325,10 @@ export function ProposalForm({
             }),
           })).filter((g) => g.items.length),
         };
-      })
-      .filter((g) => g.tiers.length);
+      });
+    // NB: events with no matching activations are kept (not filtered out), so
+    // each event always gets a heading in step 2 — a Gold city then shows
+    // "No branding activations included" rather than silently disappearing.
   }, [activations, eventFilter, tierFilter, tiersByEvent, saleMode]);
 
   // Tier options and the standard price both come from the selected event's
@@ -636,15 +638,6 @@ export function ProposalForm({
     }
   }
 
-  /** Likewise a single scoped tier is almost always the tier being quoted. */
-  function toggleTierFilter(tier: string) {
-    const next = tierFilter.includes(tier)
-      ? tierFilter.filter((t) => t !== tier)
-      : [...tierFilter, tier];
-    setTierFilter(next);
-    if (next.length === 1) setSponsorTier(next[0]);
-  }
-
   async function generate() {
     setError(null);
     if (!company.trim()) return setError('Company is required.');
@@ -851,20 +844,26 @@ export function ProposalForm({
           ) : (
             <Fieldset
               label="Selling"
-              hint={onMenu ? 'Items are picked next, each priced by hand.' : 'Leave empty to see every tier.'}
+              hint={onMenu ? 'Items are picked next, each priced by hand.' : 'The tier this sponsor is buying.'}
             >
               <div className="flex flex-wrap gap-2">
                 {scopeTiers.map((t) => (
                   <Choice
                     key={t}
-                    selected={!onMenu && tierFilter.includes(t)}
+                    selected={!onMenu && sponsorTier === t}
                     onClick={() => {
-                      // Coming back from à la carte, the picks and their
-                      // prices go with it — they belong to a different way of
-                      // selling and would otherwise be saved silently.
+                      // Single-select: this IS the tier the sponsor is buying,
+                      // chosen here and shown locked on the Sponsor step. Coming
+                      // back from à la carte, its picks go with it.
                       setSaleMode('tier');
                       setMenuPicks([]);
-                      toggleTierFilter(t);
+                      if (sponsorTier === t) {
+                        setSponsorTier('');
+                        setTierFilter([]);
+                      } else {
+                        setSponsorTier(t);
+                        setTierFilter([t]);
+                      }
                     }}
                   >
                     {t}
@@ -900,68 +899,65 @@ export function ProposalForm({
           hint={`${cart.length + menuPicks.length} selected`}
         >
           {onMenu && (
-            <>
-          {[
-            { heading: 'Branding & Activations', items: BRANDING_ITEMS },
-            { heading: 'Speaking', items: SPEAKING_ITEMS },
-          ].map((group) => (
-            <div key={group.heading} className="mb-10">
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-widest text-neutral-300">
-                {group.heading}
-              </h3>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {group.items.map((item) => {
-                  const picked = menuPicks.includes(item.key);
-                  // Branding items are the same cards a tier proposal sells,
-                  // so they show the deck's own title and description rather
-                  // than the shorthand on the à la carte slide.
-                  const module = menuModuleFor(item);
-                  return (
-                    <label
-                      key={item.key}
-                      className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${
-                        picked
-                          ? 'border-neutral-500 bg-neutral-800'
-                          : 'border-neutral-800 hover:border-neutral-700'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={picked}
-                        onChange={() =>
-                          setMenuPicks((current) =>
-                            current.includes(item.key)
-                              ? current.filter((k) => k !== item.key)
-                              : [...current, item.key]
-                          )
-                        }
-                        className="mt-0.5"
-                      />
-                      <span>
-                        <span className="block font-medium text-neutral-100">
-                          {module?.title ?? item.label}
-                        </span>
-                        {module?.description && (
-                          <span className="mt-0.5 block text-xs text-neutral-500">
-                            {module.description.slice(0, 90)}
-                            {module.description.length > 90 ? '…' : ''}
-                          </span>
-                        )}
-                        {!module && item.match && (
-                          // Named on the slide but not found in the library —
-                          // better to say so than to sell a blank card.
-                          <span className="mt-0.5 block text-xs text-neutral-500">
-                            Not found in the synced deck yet.
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
+            <div style={{ marginBottom: 28 }}>
+              {/* À la carte is sold for one city (Asia today); heading it with
+                  the event keeps it consistent with the tier groups below. */}
+              <div className="bx-subhead">
+                <span className="t dim">
+                  {ALL_EVENTS.find((e) => e.key === menuEvent)?.label ?? 'À la carte'}
+                </span>
+                <span className="rule" />
               </div>
+              {[
+                { heading: 'Branding & Activations', items: BRANDING_ITEMS },
+                { heading: 'Speaking', items: SPEAKING_ITEMS },
+              ].map((group) => (
+                <div key={group.heading} style={{ marginBottom: 18 }}>
+                  <div className="bx-flabel" style={{ marginBottom: 10 }}>{group.heading}</div>
+                  <div className="bx-cards">
+                    {group.items.map((item) => {
+                      const picked = menuPicks.includes(item.key);
+                      // Branding items are the same cards a tier proposal sells,
+                      // so they show the deck's own title and description rather
+                      // than the shorthand on the à la carte slide.
+                      const module = menuModuleFor(item);
+                      return (
+                        <button
+                          type="button"
+                          key={item.key}
+                          onClick={() =>
+                            setMenuPicks((current) =>
+                              current.includes(item.key)
+                                ? current.filter((k) => k !== item.key)
+                                : [...current, item.key]
+                            )
+                          }
+                          className={`bx-selcard${picked ? ' sel' : ''}`}
+                        >
+                          <span className="bx-cbox">
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
+                              <path d="M5 12l5 5L19 6" />
+                            </svg>
+                          </span>
+                          <span>
+                            <span className="at">{module?.title ?? item.label}</span>
+                            {module?.description && (
+                              <span className="ad">
+                                {module.description.slice(0, 90)}
+                                {module.description.length > 90 ? '…' : ''}
+                              </span>
+                            )}
+                            {!module && item.match && (
+                              <span className="ad">Not found in the synced deck yet.</span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-            </>
           )}
 
           {groups.length === 0 && !onMenu && (
@@ -976,6 +972,11 @@ export function ProposalForm({
                 <span className="t dim">{group.label}</span>
                 <span className="rule" />
               </div>
+              {group.tiers.length === 0 && (
+                <p className="bx-hint" style={{ marginTop: 0 }}>
+                  No branding activations included in this tier.
+                </p>
+              )}
               {group.tiers.map(({ tier, items }) => {
                 const ids = items.map((m) => cartKey(group.key, m.id));
                 const allIn = ids.every((id) => cart.includes(id));
@@ -1482,24 +1483,16 @@ export function ProposalForm({
                   return (
                     <Fieldset key={e.key} label={`${e.label} tier`}>
                       {options.length ? (
-                        <div className="flex flex-wrap gap-2">
-                          {options.map((t) => (
-                            <Choice
-                              key={t}
-                              selected={tiersByEvent[e.key] === t}
-                              onClick={() =>
-                                setTiersByEvent((current) => {
-                                  const next = { ...current };
-                                  if (next[e.key] === t) delete next[e.key];
-                                  else next[e.key] = t;
-                                  return next;
-                                })
-                              }
-                            >
-                              {t}
-                            </Choice>
-                          ))}
-                        </div>
+                        <p className="text-sm text-neutral-300">
+                          {tiersByEvent[e.key] || <span className="text-neutral-500">Not set</span>}
+                          <button
+                            type="button"
+                            onClick={() => setStep(0)}
+                            className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
+                          >
+                            change
+                          </button>
+                        </p>
                       ) : (
                         <p className="text-sm text-neutral-500">
                           No tier pricing has synced for {e.label} yet.
@@ -1543,13 +1536,16 @@ export function ProposalForm({
               ) : (
                 <Fieldset label="Sponsorship tier">
                   {availableTiers.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {availableTiers.map((t) => (
-                        <Choice key={t} selected={sponsorTier === t} onClick={() => setSponsorTier(t)}>
-                          {t}
-                        </Choice>
-                      ))}
-                    </div>
+                    <p className="text-sm text-neutral-300">
+                      {sponsorTier || <span className="text-neutral-500">Not set</span>}
+                      <button
+                        type="button"
+                        onClick={() => setStep(0)}
+                        className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
+                      >
+                        change
+                      </button>
+                    </p>
                   ) : (
                     // An empty control looks broken. Say which of the two
                     // reasons it is, since one is the rep's to fix and one isn't.
@@ -1688,7 +1684,7 @@ export function ProposalForm({
                   value={introNote}
                   onChange={(e) => setIntroNote(e.target.value)}
                   rows={3}
-                  placeholder="e.g. Plus a complimentary branded coffee cart for both days."
+                  placeholder="Add additional notes here. Shows up in the tier box on the proposal."
                   className="bx-textarea"
                 />
               </Fieldset>
