@@ -5,6 +5,7 @@
 import { headers } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { DeckViews } from '@/components/deck-views';
+import { ViewedAt } from '@/components/viewed-at';
 import { CopyLink } from '@/components/copy-link';
 
 export const dynamic = 'force-dynamic';
@@ -30,41 +31,50 @@ export default async function DeckLinkPage() {
     .limit(200);
 
   const views = viewRows ?? [];
+  const uniqueViewers = new Set(views.map((v) => v.viewer_email)).size;
 
   return (
-    <div className="px-6 py-10 text-neutral-50">
-      <div className="mx-auto max-w-3xl space-y-8">
+    <div className="bx-wrap bx-page" style={{ maxWidth: 900 }}>
+      <div className="bx-page-head">
         <div>
-          <h1 className="text-2xl font-semibold">Sponsorship deck</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            One link, shareable with anyone. They enter an email, then read the deck.
+          <h1 className="bx-h1">Sponsorship deck</h1>
+          <div className="bx-sub">One link, shareable with anyone. Every open is logged.</div>
+        </div>
+      </div>
+
+      {views.length > 0 && (
+        <div className="bx-stats" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="bx-stat">
+            <div className="k">Total views</div>
+            <div className="v">{views.length}</div>
+          </div>
+          <div className="bx-stat">
+            <div className="k">Unique viewers</div>
+            <div className="v">{uniqueViewers}</div>
+          </div>
+          <div className="bx-stat accent">
+            <div className="k">Last opened</div>
+            <div className="v" style={{ fontSize: 18 }}>
+              <ViewedAt iso={views[0].started_at} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bx-linkcard">
+        <div className="lkl">Shareable link</div>
+        <CopyLink url={url} display={url} />
+      </div>
+
+      {views.length === 0 ? (
+        <div className="bx-card" style={{ padding: 28 }}>
+          <p className="bx-empty" style={{ padding: 0 }}>
+            Not opened yet. Everyone who enters their email to read the deck lands here.
           </p>
         </div>
-
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Shareable link
-          </h2>
-          <p className="mt-2 text-sm text-neutral-300">
-            Unlike a proposal link, this opens for any address. Every view is logged below.
-          </p>
-          <CopyLink url={url} display={url} />
-        </section>
-
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Views
-          </h2>
-          {views.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">
-              Not opened yet. Everyone who enters their email to read the deck lands here.
-            </p>
-          ) : (
-            <DeckViews views={views} deckLabels={DECK_LABEL} />
-          )}
-        </section>
-
-      </div>
+      ) : (
+        <DeckViews views={views} deckLabels={DECK_LABEL} />
+      )}
     </div>
   );
 }

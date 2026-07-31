@@ -7,37 +7,25 @@ export const dynamic = 'force-dynamic';
 
 export default function NewProposalChooser() {
   return (
-    <div className="px-6 py-10 text-neutral-50">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-2xl font-semibold">New proposal</h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Which year are you creating a proposal for?
-        </p>
-
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          <Link
-            href="/builder/new/das"
-            className="group block rounded-lg border border-neutral-800 bg-neutral-900 p-6 transition-colors hover:border-neutral-600"
-          >
-            <div className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-              2026
-            </div>
-            <div className="mt-2 text-xl font-semibold text-neutral-100">Asia &amp; London</div>
-          </Link>
-
-          <Link
-            href="/builder/new/nyc"
-            className="group block rounded-lg border border-neutral-800 bg-neutral-900 p-6 transition-colors hover:border-neutral-600"
-          >
-            <div
-              className="text-xs font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--das-new-york)' }}
-            >
-              2027
-            </div>
-            <div className="mt-2 text-xl font-semibold text-neutral-100">New York</div>
-          </Link>
+    <div className="bx-wrap bx-page" style={{ maxWidth: 780 }}>
+      <div className="bx-page-head">
+        <div>
+          <h1 className="bx-h1">New proposal</h1>
+          <div className="bx-sub">Which event are you building for?</div>
         </div>
+      </div>
+
+      <div className="bx-years">
+        <Link href="/builder/new/das" className="bx-year das">
+          <span className="glow" />
+          <div className="yr">DAS 2026</div>
+          <h3>Asia &amp; London</h3>
+        </Link>
+        <Link href="/builder/new/nyc" className="bx-year ny">
+          <span className="glow" />
+          <div className="yr">DAS 2027</div>
+          <h3>New York</h3>
+        </Link>
       </div>
     </div>
   );

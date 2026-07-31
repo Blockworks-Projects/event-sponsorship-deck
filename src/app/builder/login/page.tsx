@@ -2,9 +2,6 @@
 
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 export default function BuilderLoginPage() {
   return (
@@ -60,18 +57,17 @@ function LoginForm() {
 
   if (sent) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
-        <div className="w-full max-w-sm">
-          <h1 className="text-xl font-semibold text-neutral-50">Check your inbox</h1>
-          <p className="mt-2 text-sm text-neutral-400">
-            We&apos;ve sent a sign-in link to <strong className="text-neutral-200">{email}</strong>.
-            It works for the next 30 minutes.
+      <div className="bx-login">
+        <div className="bx-login-card">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/blockworks-symbol.svg" alt="Blockworks" className="bx-mark" />
+          <h1>Check your inbox</h1>
+          <p className="tag">
+            We&apos;ve sent a sign-in link to{' '}
+            <strong style={{ color: 'var(--bx-text)' }}>{email}</strong>. It works for the
+            next 30 minutes.
           </p>
-          <button
-            type="button"
-            onClick={() => setSent(false)}
-            className="mt-6 text-sm text-neutral-400 underline hover:text-neutral-200"
-          >
+          <button type="button" onClick={() => setSent(false)} className="bx-btn bx-btn-ghost">
             Use a different address
           </button>
         </div>
@@ -80,25 +76,25 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
+    <div className="bx-login">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           // Enter in a field does the obvious thing rather than nothing.
           signIn(password ? 'password' : 'link');
         }}
-        className="w-full max-w-sm space-y-4"
+        className="bx-login-card"
       >
-        <div>
-          <h1 className="text-xl font-semibold text-neutral-50">Proposal Builder</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            Sign in with your Blockworks email.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/blockworks-symbol.svg" alt="Blockworks" className="bx-mark" />
+        <h1>Proposal Builder</h1>
+        <p className="tag">Sign in with your Blockworks email.</p>
+
+        <div className="bx-field">
+          <label className="bx-flabel" htmlFor="email">Email</label>
+          <input
             id="email"
+            className="bx-input"
             type="email"
             autoFocus
             placeholder="you@blockworks.co"
@@ -106,36 +102,40 @@ function LoginForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <Input
+        <div className="bx-field" style={{ marginBottom: 0 }}>
+          <label className="bx-flabel" htmlFor="password">
+            Password <span className="opt">· optional</span>
+          </label>
+          <input
             id="password"
+            className="bx-input"
             type="password"
             autoComplete="current-password"
-            placeholder="Optional"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <div className="flex gap-3">
-          <Button
+
+        {error && <p className="bx-err">{error}</p>}
+
+        <div className="bx-login-btns">
+          <button
             type="button"
+            className="bx-btn bx-btn-primary"
             onClick={() => signIn('password')}
             disabled={loading}
-            className="flex-1"
           >
             Log in
-          </Button>
-          <Button
+          </button>
+          <button
             type="button"
-            variant="secondary"
+            className="bx-btn bx-btn-ghost"
             onClick={() => signIn('link')}
             disabled={loading}
-            className="flex-1"
           >
-            Magic link
-          </Button>
+            Email me a link
+          </button>
         </div>
       </form>
     </div>

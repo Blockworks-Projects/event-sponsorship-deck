@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 
 /** Pulls the latest content from Google Slides into the module library on
  * demand. The same sync also runs automatically on a schedule (see
@@ -33,12 +32,20 @@ export function SyncButton() {
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <Button variant="secondary" onClick={sync} disabled={status === 'syncing'}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <button
+        type="button"
+        className="bx-btn bx-btn-ghost"
+        onClick={sync}
+        disabled={status === 'syncing'}
+      >
         {status === 'syncing' ? 'Syncing…' : 'Sync from Google Slides'}
-      </Button>
+      </button>
       {message && (
-        <span className={`text-sm ${status === 'error' ? 'text-red-400' : 'text-neutral-400'}`}>
+        <span
+          className="bx-hint"
+          style={{ margin: 0, color: status === 'error' ? '#F87171' : 'var(--bx-muted)' }}
+        >
           {message}
         </span>
       )}

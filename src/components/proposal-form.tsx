@@ -744,30 +744,30 @@ export function ProposalForm({
 
   return (
     <div>
-      <ol className="mb-8 flex flex-wrap gap-2">
-        {STEPS.map((name, i) => (
-          <li
-            key={name}
-            className={
-              (i === 2 && !addOnOffered) || (i === 3 && !contentOffered)
-                ? 'hidden'
-                : undefined
-            }
-          >
-            {/* Steps are navigable, not locked: changing the scope after
-                picking shouldn't mean starting again. */}
-            <button
-              type="button"
-              onClick={() => setStep(i)}
-              className={`px-4 py-2 text-sm font-medium ${
-                i === step ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              <span className="mr-2 text-xs opacity-60">{i + 1}</span>
-              {name}
-            </button>
-          </li>
-        ))}
+      <ol className="bx-steps-top">
+        {STEPS.map((name, i) => {
+          if ((i === 2 && !addOnOffered) || (i === 3 && !contentOffered)) return null;
+          // Steps are navigable, not locked: changing the scope after picking
+          // shouldn't mean starting again. Anything before the current step
+          // reads as done.
+          const state = i < step ? 'done' : i === step ? 'active' : '';
+          return (
+            <li key={name}>
+              <button type="button" onClick={() => setStep(i)} className={`bx-stepchip ${state}`}>
+                <span className="num">
+                  {i < step ? (
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
+                      <path d="M5 12l5 5L19 6" />
+                    </svg>
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                {name}
+              </button>
+            </li>
+          );
+        })}
       </ol>
 
       {step === 0 && (
@@ -1701,25 +1701,18 @@ export function ProposalForm({
           </div>
 
           {cart.length > 0 && (
-            <div className="mb-6">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-neutral-400">
-                In this proposal
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div style={{ marginBottom: 22 }}>
+              <div className="bx-flabel" style={{ marginBottom: 10 }}>In this proposal</div>
+              <div className="bx-cart">
                 {cart.map((id) => (
-                  <span key={id} className="flex items-center gap-2 bg-neutral-800 px-3 py-1 text-sm">
+                  <span key={id} className="item">
                     {byId.get(cartModuleId(id))?.title ?? id}
                     {bothEvents && cartEvent(id) && (
-                      <span className="text-xs uppercase tracking-widest text-neutral-500">
+                      <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--bx-faint)' }}>
                         {cartEvent(id)}
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => toggle(cart, id, setCart)}
-                      className="text-neutral-500 hover:text-neutral-200"
-                      aria-label="Remove"
-                    >
+                    <button type="button" onClick={() => toggle(cart, id, setCart)} aria-label="Remove">
                       ×
                     </button>
                   </span>
@@ -1728,7 +1721,7 @@ export function ProposalForm({
             </div>
           )}
 
-          {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+          {error && <p className="bx-err">{error}</p>}
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : addOnOffered ? 2 : 1)}>Back</Button>
@@ -1752,10 +1745,10 @@ function StepPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border border-neutral-800 bg-neutral-900 p-6">
-      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {hint && <p className="text-sm text-neutral-500">{hint}</p>}
+    <div className="bx-steppanel">
+      <div className="bx-steppanel-head">
+        <h2>{title}</h2>
+        {hint && <p className="hint">{hint}</p>}
       </div>
       {children}
     </div>
@@ -1777,17 +1770,25 @@ function Fieldset({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-6">
-      <div className={`mb-2 ${stackHint ? '' : 'flex items-baseline gap-3'}`}>
-        <span className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+    <div className="bx-field">
+      <div
+        className="bx-flabel"
+        style={
+          stackHint
+            ? undefined
+            : { display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 7 }
+        }
+      >
+        <span>
           {label}
           {/* Marked up front rather than only failing on submit. */}
-          {required && <span className="ml-1 text-neutral-500">*</span>}
+          {required && <span className="req"> *</span>}
         </span>
-        {hint && (
-          <span className={`text-xs text-neutral-600${stackHint ? ' mt-1 block' : ''}`}>{hint}</span>
-        )}
+        {hint && !stackHint && <span className="opt">{hint}</span>}
       </div>
+      {hint && stackHint && (
+        <div className="bx-hint" style={{ marginTop: -3, marginBottom: 8 }}>{hint}</div>
+      )}
       {children}
     </div>
   );
@@ -1803,15 +1804,7 @@ function Choice({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`border px-4 py-2 text-sm font-medium ${
-        selected
-          ? 'border-neutral-200 bg-neutral-100 text-neutral-900'
-          : 'border-neutral-700 text-neutral-300 hover:border-neutral-500'
-      }`}
-    >
+    <button type="button" onClick={onClick} className={`bx-choice${selected ? ' on' : ''}`}>
       {children}
     </button>
   );

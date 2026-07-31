@@ -57,51 +57,41 @@ export function DeckViews({
 
   return (
     <>
-      {/* Only worth showing tabs when there's more than one deck to split by. */}
-      {decks.length > 1 && (
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          {tabs.map((key) => {
-            const isActive = key === active;
-            return (
+      <div className="bx-views-head">
+        <h3>
+          {filtered.length} view{filtered.length === 1 ? '' : 's'} · {uniqueViewers} viewer
+          {uniqueViewers === 1 ? '' : 's'}
+        </h3>
+        {/* Only worth showing tabs when there's more than one deck to split by. */}
+        {decks.length > 1 && (
+          <div className="bx-tabs">
+            {tabs.map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setActive(key)}
-                className={
-                  'rounded-full border px-3 py-1 text-xs transition-colors ' +
-                  (isActive
-                    ? 'border-neutral-500 bg-neutral-700 text-neutral-50'
-                    : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200')
-                }
+                className={`bx-tab${key === active ? ' on' : ''}`}
               >
-                {key === 'all' ? 'All decks' : label(key)}
-                <span className="ml-1.5 text-neutral-500">{countFor(key)}</span>
+                {key === 'all' ? 'All decks' : label(key)} <span>{countFor(key)}</span>
               </button>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
 
-      <p className="mt-3 text-sm text-neutral-300">
-        {filtered.length} view{filtered.length === 1 ? '' : 's'} · {uniqueViewers} viewer
-        {uniqueViewers === 1 ? '' : 's'}
-      </p>
-
-      <ul className="mt-3 space-y-2">
+      <ul className="bx-viewlist">
         {filtered.map((v) => (
-          <li
-            key={v.id}
-            className="flex flex-wrap items-baseline justify-between gap-2 border-b border-neutral-800 pb-2 text-sm last:border-b-0 last:pb-0"
-          >
-            <span className="text-neutral-200">
-              {v.viewer_email}
-              {v.deck_key && (
-                <span className="ml-2 text-xs text-neutral-500">
-                  {label(v.deck_key)}
-                </span>
-              )}
+          <li key={v.id} className="bx-vrow">
+            <span className="bx-vemail">
+              <span className="bx-vinit">{(v.viewer_email || '?').charAt(0).toUpperCase()}</span>
+              <span className="addr">{v.viewer_email}</span>
             </span>
-            <span className="text-xs text-neutral-500">
+            {v.deck_key && (
+              <span className={`bx-deckchip ${v.deck_key === 'nyc' ? 'nyc' : 'das'}`}>
+                {label(v.deck_key)}
+              </span>
+            )}
+            <span className="bx-vtime">
               <ViewedAt iso={v.started_at} />
             </span>
           </li>

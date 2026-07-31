@@ -29,21 +29,12 @@ export function CopyLink({ url, display }: { url: string; display: string }) {
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-3">
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-sm text-neutral-200 underline"
-        title={url}
-      >
+    <div className="bx-coderow">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="bx-code" title={url}>
         {display}
       </a>
-      <button
-        onClick={copy}
-        className="border border-neutral-700 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:border-neutral-500 hover:text-white"
-      >
-        {copied ? 'Copied' : 'Copy link'}
+      <button onClick={copy} className="bx-btn bx-btn-ghost">
+        {copied ? 'Copied ✓' : 'Copy link'}
       </button>
     </div>
   );

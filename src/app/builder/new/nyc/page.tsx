@@ -19,24 +19,19 @@ export default async function NewNycProposalPage() {
     .order('display_order', { ascending: true });
 
   return (
-    <div className="px-6 py-10 text-neutral-50">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">New Proposal · New York</h1>
-            <p className="mt-1 text-sm text-neutral-400">
-              Digital Asset Summit NYC. Pick a tier and activations, then
-              generate a tracked proposal page.
-            </p>
-          </div>
-          <SyncButton />
+    <div className="bx-wrap bx-page">
+      <div className="bx-page-head">
+        <div>
+          <h1 className="bx-h1">New proposal · New York</h1>
+          <div className="bx-sub">Digital Asset Summit NYC.</div>
         </div>
-        <ProposalForm
-          nycOnly
-          signedInAs={signedInAs ?? undefined}
-          modules={(modules ?? []) as SponsorshipModule[]}
-        />
+        <SyncButton />
       </div>
+      <ProposalForm
+        nycOnly
+        signedInAs={signedInAs ?? undefined}
+        modules={(modules ?? []) as SponsorshipModule[]}
+      />
     </div>
   );
 }
