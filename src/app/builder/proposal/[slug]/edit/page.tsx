@@ -31,29 +31,24 @@ export default async function EditProposalPage({
     .order('sort_order', { ascending: true });
 
   return (
-    <div className="px-6 py-10 text-neutral-50">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6">
-          <Link
-            href={`/builder/proposal/${slug}`}
-            className="text-sm text-neutral-400 underline hover:text-neutral-200"
-          >
-            ← Back to {proposal.company}
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold">Edit proposal</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            The shareable link stays the same, so anything already sent keeps working.
-            The page and PDF update as soon as you save.
-          </p>
+    <div className="bx-wrap bx-page">
+      <div style={{ marginBottom: 22 }}>
+        <Link href={`/builder/proposal/${slug}`} className="bx-chip">
+          ← Back to {proposal.company}
+        </Link>
+        <h1 className="bx-h1" style={{ marginTop: 14 }}>Edit proposal</h1>
+        <div className="bx-sub">
+          The shareable link stays the same, so anything already sent keeps working. The page
+          and PDF update as soon as you save.
         </div>
-
-        <ProposalForm
-          modules={(modules ?? []) as SponsorshipModule[]}
-          existing={proposal as Proposal}
-          existingModuleIds={(links ?? []).map((l) => l.module_id)}
-          nycOnly={(proposal as Proposal).event === 'nyc'}
-        />
       </div>
+
+      <ProposalForm
+        modules={(modules ?? []) as SponsorshipModule[]}
+        existing={proposal as Proposal}
+        existingModuleIds={(links ?? []).map((l) => l.module_id)}
+        nycOnly={(proposal as Proposal).event === 'nyc'}
+      />
     </div>
   );
 }

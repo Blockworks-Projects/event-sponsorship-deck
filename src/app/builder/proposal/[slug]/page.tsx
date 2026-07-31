@@ -59,104 +59,109 @@ export default async function BuilderProposalPage({
   const shareUrl = `${origin}/${proposal.slug}`;
   const shareDisplay = `${origin}/${proposal.slug.replace(/-[a-z0-9]{4}$/, '')}`;
 
+  const uniqueViewers = new Set(views.map((v) => v.viewer_email)).size;
+  const evClass = ['london', 'asia', 'nyc', 'both'].includes(proposal.event ?? '')
+    ? proposal.event
+    : '';
+
   return (
-    <div className="px-6 py-10 text-neutral-50">
-      <div className="mx-auto max-w-3xl space-y-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">{proposal.company}</h1>
-            <p className="mt-1 text-sm text-neutral-400">
-              {modules.length} item{modules.length === 1 ? '' : 's'}
-              {proposal.total_price ? ` · ${proposal.total_price}` : ''}
-              {proposal.event ? ` · ${EVENT_LABEL[proposal.event] ?? proposal.event}` : ''}
-            </p>
+    <div className="bx-wrap bx-page" style={{ maxWidth: 900 }}>
+      <div className="bx-page-head">
+        <div>
+          <h1 className="bx-h1">{proposal.company}</h1>
+          <div className="bx-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {proposal.event && <span className={`bx-ev ${evClass}`}>{EVENT_LABEL[proposal.event] ?? proposal.event}</span>}
+            <span>{modules.length} item{modules.length === 1 ? '' : 's'}</span>
+            {proposal.total_price && <span>· {proposal.total_price}</span>}
           </div>
-          <Link
-            href={`/builder/proposal/${proposal.slug}/edit`}
-            className="bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
-          >
-            Edit proposal
-          </Link>
         </div>
-
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Shareable link
-          </h2>
-          <p className="mt-2 text-sm text-neutral-300">
-            Tracked page. Viewers enter their details before seeing it, and every view is logged.
-          </p>
-          <CopyLink url={shareUrl} display={shareDisplay} />
-        </section>
-
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            PDF
-          </h2>
-          <p className="mt-2 text-sm text-neutral-300">
-            Opens the proposal and raises your print dialog. Choose
-            &ldquo;Save as PDF&rdquo; as the destination.
-          </p>
-          {/* Printed by your own browser rather than rendered on the server:
-              headless Chrome in a serverless container runs out of memory on
-              a proposal this image-heavy, and your machine never will. */}
+        <div style={{ display: 'flex', gap: 10 }}>
           <a
             href={`/${proposal.slug}?print=1&autoprint=1`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-block bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white"
+            className="bx-btn bx-btn-ghost"
           >
             Save as PDF
           </a>
-        </section>
+          <Link href={`/builder/proposal/${proposal.slug}/edit`} className="bx-btn bx-btn-primary">
+            Edit proposal
+          </Link>
+        </div>
+      </div>
 
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Views
-          </h2>
-          {views.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">
-              Not opened yet. Every time someone enters their email to view this, it
-              lands here.
-            </p>
-          ) : (
-            <>
-              <p className="mt-2 text-sm text-neutral-300">
-                {views.length} view{views.length === 1 ? '' : 's'}
-                {' · '}
-                {new Set(views.map((v) => v.viewer_email)).size} viewer
-                {new Set(views.map((v) => v.viewer_email)).size === 1 ? '' : 's'}
-              </p>
-              <ul className="mt-3 space-y-2">
-                {views.map((v) => (
-                  <li
-                    key={v.id}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-neutral-800 pb-2 text-sm last:border-b-0 last:pb-0"
-                  >
-                    <span className="text-neutral-200">{v.viewer_email}</span>
-                    <span className="text-xs text-neutral-500">
-                      <ViewedAt iso={v.started_at} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
+      {views.length > 0 && (
+        <div className="bx-stats" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          <div className="bx-stat">
+            <div className="k">Views</div>
+            <div className="v">{views.length}</div>
+          </div>
+          <div className="bx-stat accent">
+            <div className="k">Unique viewers</div>
+            <div className="v">{uniqueViewers}</div>
+          </div>
+        </div>
+      )}
 
-        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Included
-          </h2>
-          <ol className="mt-3 space-y-2">
-            {modules.map((m, i) => (
-              <li key={m.id} className="text-sm text-neutral-200">
-                {i + 1}. {m.title}
-                {m.tier ? <span className="ml-2 text-neutral-500">{m.tier}</span> : null}
-              </li>
-            ))}
-          </ol>
-        </section>
+      <div className="bx-linkcard">
+        <div className="lkl">Shareable link</div>
+        <CopyLink url={shareUrl} display={shareDisplay} />
+      </div>
+
+      <div className="bx-views-head" style={{ marginTop: 6 }}>
+        <h3>
+          {views.length === 0
+            ? 'Views'
+            : `${views.length} view${views.length === 1 ? '' : 's'} · ${uniqueViewers} viewer${uniqueViewers === 1 ? '' : 's'}`}
+        </h3>
+      </div>
+      {views.length === 0 ? (
+        <div className="bx-card" style={{ padding: 24 }}>
+          <p className="bx-empty" style={{ padding: 0 }}>
+            Not opened yet. Every time someone enters their email to view this, it lands here.
+          </p>
+        </div>
+      ) : (
+        <ul className="bx-viewlist" style={{ marginBottom: 30 }}>
+          {views.map((v) => (
+            <li key={v.id} className="bx-vrow">
+              <span className="bx-vemail">
+                <span className="bx-vinit">{(v.viewer_email || '?').charAt(0).toUpperCase()}</span>
+                <span className="addr">{v.viewer_email}</span>
+              </span>
+              <span className="bx-vtime">
+                <ViewedAt iso={v.started_at} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="bx-card" style={{ padding: '18px 20px' }}>
+        <div className="bx-flabel" style={{ marginBottom: 12 }}>
+          Included · {modules.length} item{modules.length === 1 ? '' : 's'}
+        </div>
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {modules.map((m, i) => (
+            <li
+              key={m.id}
+              style={{
+                display: 'flex',
+                gap: 12,
+                alignItems: 'baseline',
+                padding: '8px 0',
+                borderBottom: i === modules.length - 1 ? 'none' : '1px solid var(--bx-border-soft)',
+                fontSize: 13.5,
+              }}
+            >
+              <span style={{ color: 'var(--bx-faint)', fontVariantNumeric: 'tabular-nums', minWidth: 18 }}>
+                {i + 1}
+              </span>
+              <span style={{ flex: 1 }}>{m.title}</span>
+              {m.tier && <span className="bx-tier">{m.tier}</span>}
+            </li>
+          ))}
+        </ol>
       </div>
     </div>
   );

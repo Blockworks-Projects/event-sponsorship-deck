@@ -537,8 +537,10 @@
 .bx-selcard.sel { border-color: var(--bx-nyc); background: rgba(18,185,129,0.06); }
 .bx-cbox { width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid var(--bx-border); flex-shrink: 0; margin-top: 1px; display: grid; place-items: center; color: transparent; }
 .bx-selcard.sel .bx-cbox { background: var(--bx-nyc); border-color: var(--bx-nyc); color: #0B0D10; }
-.bx-selcard .at { font-size: 13px; font-weight: 600; }
-.bx-selcard .ad { font-size: 11.5px; color: var(--bx-faint); margin-top: 3px; line-height: 1.4; }
+.bx-selcard .at { display: block; font-size: 13px; font-weight: 600; }
+.bx-selcard .ad { display: block; font-size: 11.5px; color: var(--bx-faint); margin-top: 3px; line-height: 1.4; }
+.bx-linklike { background: none; border: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--bx-muted); text-decoration: underline; padding: 0; }
+.bx-linklike:hover { color: var(--bx-text); }
 
 /* sticky action bar */
 .bx-actionbar { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid var(--bx-border-soft); margin-top: 24px; flex-wrap: wrap; }

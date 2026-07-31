@@ -971,19 +971,18 @@ export function ProposalForm({
           )}
 
           {groups.map((group) => (
-            <div key={group.key} className="mb-10">
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-widest text-neutral-300">
-                {group.label}
-              </h3>
+            <div key={group.key} style={{ marginBottom: 28 }}>
+              <div className="bx-subhead">
+                <span className="t dim">{group.label}</span>
+                <span className="rule" />
+              </div>
               {group.tiers.map(({ tier, items }) => {
                 const ids = items.map((m) => cartKey(group.key, m.id));
                 const allIn = ids.every((id) => cart.includes(id));
                 return (
-                  <div key={tier} className="mb-6">
-                    <div className="mb-2 flex items-baseline justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-                        {tier}
-                      </div>
+                  <div key={tier} style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div className="bx-flabel" style={{ marginBottom: 0 }}>{tier}</div>
                       <button
                         type="button"
                         onClick={() =>
@@ -993,38 +992,38 @@ export function ProposalForm({
                               : [...new Set([...cart, ...ids])]
                           )
                         }
-                        className="text-xs text-neutral-400 underline hover:text-neutral-200"
+                        className="bx-linklike"
                       >
                         {allIn ? 'Clear group' : 'Select all'}
                       </button>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {items.map((m) => (
-                        <label
-                          key={m.id}
-                          className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${
-                            cart.includes(cartKey(group.key, m.id))
-                              ? 'border-neutral-500 bg-neutral-800'
-                              : 'border-neutral-800 hover:border-neutral-700'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={cart.includes(cartKey(group.key, m.id))}
-                            onChange={() => toggle(cart, cartKey(group.key, m.id), setCart)}
-                            className="mt-0.5"
-                          />
-                          <span>
-                            <span className="block font-medium text-neutral-100">{m.title}</span>
-                            {m.description && (
-                              <span className="mt-0.5 block text-xs text-neutral-500">
-                                {m.description.slice(0, 90)}
-                                {m.description.length > 90 ? '…' : ''}
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      ))}
+                    <div className="bx-cards">
+                      {items.map((m) => {
+                        const on = cart.includes(cartKey(group.key, m.id));
+                        return (
+                          <button
+                            type="button"
+                            key={m.id}
+                            onClick={() => toggle(cart, cartKey(group.key, m.id), setCart)}
+                            className={`bx-selcard${on ? ' sel' : ''}`}
+                          >
+                            <span className="bx-cbox">
+                              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
+                                <path d="M5 12l5 5L19 6" />
+                              </svg>
+                            </span>
+                            <span>
+                              <span className="at">{m.title}</span>
+                              {m.description && (
+                                <span className="ad">
+                                  {m.description.slice(0, 90)}
+                                  {m.description.length > 90 ? '…' : ''}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1195,7 +1194,7 @@ export function ProposalForm({
                         onChange={(e) => setDraft(key, { description: e.target.value })}
                         rows={3}
                         placeholder="Blockworks will work with Uniswap to build a bespoke content proposal which features Uniswap alongside a tier-1 institutional partner. Initial proposal below:"
-                        className="w-full resize-y border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                        className="bx-textarea"
                       />
                     </Fieldset>
 
@@ -1224,7 +1223,7 @@ export function ProposalForm({
                             speakers: picked?.speakers ?? [],
                           });
                         }}
-                        className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 disabled:opacity-50"
+                        className="bx-select"
                       >
                         <option value="">
                           {agendaLoading && !agenda
@@ -1296,7 +1295,7 @@ export function ProposalForm({
 
       {step === 4 && (
         <StepPanel title="Sponsor details" hint={`${cart.length} activations selected`}>
-          <div className="grid gap-x-10 md:grid-cols-2">
+          <div className="bx-form-grid">
             <div>
               <Fieldset
                 label="Company"
@@ -1412,7 +1411,7 @@ export function ProposalForm({
               </Fieldset>
             </div>
 
-            <div>
+            <div className="bx-pricecard">
               {/* Never re-asked: the scope in step 1 decided it. */}
               <Fieldset label="Event">
                 <p className="text-sm text-neutral-300">
@@ -1694,7 +1693,7 @@ export function ProposalForm({
                   onChange={(e) => setIntroNote(e.target.value)}
                   rows={3}
                   placeholder="e.g. Plus a complimentary branded coffee cart for both days."
-                  className="w-full resize-y border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                  className="bx-textarea"
                 />
               </Fieldset>
             </div>
