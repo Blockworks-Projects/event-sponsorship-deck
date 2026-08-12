@@ -17,7 +17,22 @@ export function SyncButton() {
     setMessage(null);
     try {
       const res = await fetch('/api/sync', { method: 'POST' });
-      const data = await res.json();
+      // A timed-out or crashed function returns an HTML error page, not JSON;
+      // read the body as text first so that surfaces as a readable message
+      // instead of "Unexpected token '<'".
+      const text = await res.text();
+      let data: { synced?: number; failed?: number; error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'Sync returned an unexpected response — check the server logs.'
+            : res.status === 504 || /timed?\s?out|FUNCTION_INVOCATION_TIMEOUT/i.test(text)
+              ? 'Sync timed out — the deck has a lot of images. It may have partly completed; wait a moment and try again.'
+              : `Sync failed (HTTP ${res.status}).`
+        );
+      }
       if (!res.ok) throw new Error(data.error ?? 'Sync failed.');
       setStatus('done');
       setMessage(
