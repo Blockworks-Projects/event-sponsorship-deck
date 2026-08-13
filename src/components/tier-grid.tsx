@@ -57,15 +57,23 @@ export function TierGrid({
     }));
 
   // A city sold item by item still belongs in the comparison: it has no tier,
-  // so its column lists what was actually bought.
+  // so its column lists what was actually bought. A proposal can have more than
+  // one à la carte city, so group the items by event — one column each.
   if (menu.length) {
-    const event = menu[0].event;
-    columns.push({
-      event,
-      label: EVENT_LABEL[event] ?? event,
-      tier: 'À la carte',
-      items: menu.map((item) => item.label),
-    });
+    const byEvent = new Map<string, string[]>();
+    for (const item of menu) {
+      const items = byEvent.get(item.event) ?? [];
+      items.push(item.label);
+      byEvent.set(item.event, items);
+    }
+    for (const [event, items] of byEvent) {
+      columns.push({
+        event,
+        label: EVENT_LABEL[event] ?? event,
+        tier: 'À la carte',
+        items,
+      });
+    }
     columns.sort((a, b) => EVENT_ORDER.indexOf(a.event) - EVENT_ORDER.indexOf(b.event));
   }
 

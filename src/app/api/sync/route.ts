@@ -1,4 +1,3 @@
-
 // POST /api/sync — pulls the current catalog from the Sponsor Deck
 // Builder's Apps Script sync endpoint and upserts it into
 // sponsorship_modules, re-hosting each card's images to Supabase Storage

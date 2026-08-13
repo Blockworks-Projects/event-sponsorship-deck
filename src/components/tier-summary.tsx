@@ -181,7 +181,7 @@ export function PriceBreakdown({
             ))}
           {menu.length > 0
             ? menu.map((item) => (
-                <div key={item.key} className="flex justify-between gap-6 py-3">
+                <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
                   <dt className="text-sm text-neutral-700">
                     {EVENT_LABEL[item.event] ?? item.event} · {item.label}
                   </dt>

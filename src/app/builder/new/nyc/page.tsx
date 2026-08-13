@@ -1,6 +1,6 @@
 // The New York (DAS 2027) side of the builder. Reached from the year chooser
 // at /builder/new. Same form as a normal proposal, but locked to the NYC event
-// — no Asia/London/Both picker, and no à la carte (which is Asia-only).
+// — no Asia/London/Both picker. À la carte is offered here too.
 import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';

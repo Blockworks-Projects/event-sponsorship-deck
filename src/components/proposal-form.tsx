@@ -67,7 +67,7 @@ export function ProposalForm({
   existing?: Proposal;
   existingModuleIds?: string[];
   /** The New York side: the event is fixed to NYC and the Asia/London/Both
-   *  picker (and à la carte, which is Asia-only) never appears. */
+   *  picker never appears. À la carte is still offered — New York sells it too. */
   nycOnly?: boolean;
 }) {
   const router = useRouter();
@@ -143,21 +143,41 @@ export function ProposalForm({
   const [appliedAccount, setAppliedAccount] = useState<string | null>(null);
 
   /**
-   * Selling a tier, or individual items. À la carte is offered where the
-   * event sells it — Asia today — and replaces tiers rather than sitting
-   * alongside them: there is no tier to show benefits for.
+   * Selling a tier, or individual items. À la carte is offered at every event
+   * and decided per city: on a both-events proposal one city can be sold item
+   * by item while the other is on a tier, or both à la carte. Picks and prices
+   * are therefore keyed by "event|itemKey", the same shape the cart uses, so a
+   * Meetup Zone bought for London is a separate line from one bought for Asia.
    */
-  const [saleMode, setSaleMode] = useState<'tier' | 'menu'>(
-    existing?.a_la_carte?.length ? 'menu' : 'tier'
+  const menuKey = (eventKey: string, itemKey: string) => `${eventKey}|${itemKey}`;
+  // The cities being sold à la carte. Empty means the whole proposal is on
+  // tiers; entries are always à la carte-capable events in scope.
+  const [menuSel, setMenuSel] = useState<string[]>(
+    [...new Set((existing?.a_la_carte ?? []).map((line) => line.event))]
   );
   const [menuPicks, setMenuPicks] = useState<string[]>(
-    (existing?.a_la_carte ?? []).map((line) => line.key)
+    (existing?.a_la_carte ?? []).map((line) => menuKey(line.event, line.key))
   );
   const [menuPrices, setMenuPrices] = useState<Record<string, string>>(
     Object.fromEntries(
-      (existing?.a_la_carte ?? []).map((line) => [line.key, String(parsePrice(line.price) ?? '')])
+      (existing?.a_la_carte ?? []).map((line) => [
+        menuKey(line.event, line.key),
+        String(parsePrice(line.price) ?? ''),
+      ])
     )
   );
+  /** Is this event being sold item by item rather than as a tier? */
+  const onMenuFor = (eventKey: string) => menuSel.includes(eventKey);
+  /** The item keys picked for one city, in menu order. */
+  const menuPicksForEvent = (eventKey: string) =>
+    MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(eventKey, item.key))).map(
+      (item) => item.key
+    );
+  const toggleMenuPick = (eventKey: string, itemKey: string) =>
+    setMenuPicks((current) => {
+      const key = menuKey(eventKey, itemKey);
+      return current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    });
 
   useEffect(() => {
     let cancelled = false;
@@ -291,11 +311,12 @@ export function ProposalForm({
    * An item marked "Both" shows under each event it applies to.
    */
   const groups = useMemo(() => {
-    const sellingItems = saleMode === 'menu';
     const wanted = (eventFilter === 'both' ? EVENTS : ALL_EVENTS.filter((e) => e.key === eventFilter))
       // A city sold à la carte picks its items from the menu, not from the
-      // tier lists — showing both would offer the same activation twice.
-      .filter((e) => !(sellingItems && A_LA_CARTE_EVENTS.includes(e.key)));
+      // tier lists — showing both would offer the same activation twice. Decided
+      // per city, so a both proposal can list London's tier activations while
+      // Asia shows its menu.
+      .filter((e) => !menuSel.includes(e.key));
 
     return wanted
       .map((ev) => {
@@ -329,7 +350,7 @@ export function ProposalForm({
     // NB: events with no matching activations are kept (not filtered out), so
     // each event always gets a heading in step 2 — a Gold city then shows
     // "No branding activations included" rather than silently disappearing.
-  }, [activations, eventFilter, tierFilter, tiersByEvent, saleMode]);
+  }, [activations, eventFilter, tierFilter, tiersByEvent, menuSel]);
 
   // Tier options and the standard price both come from the selected event's
   // tier table in the content deck, so they track whatever it currently says.
@@ -342,44 +363,46 @@ export function ProposalForm({
         .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
     : [];
   const bothEvents = event === 'both';
-  // Offered per event: on a both-events proposal Asia can be sold à la carte
-  // while London stays on a tier, which is how it's actually sold.
-  const menuEvents = (bothEvents ? EVENTS.map((e) => e.key) : [event]).filter((key) =>
-    A_LA_CARTE_EVENTS.includes(key)
-  );
-  const menuOffered = menuEvents.length > 0;
-  const onMenu = menuOffered && saleMode === 'menu';
-  /** The event the items belong to — Asia today, whether alone or alongside London. */
-  const menuEvent = menuEvents[0] ?? event;
+  const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
+
+  // À la carte is offered wherever an in-scope event sells it, and chosen per
+  // city (menuSel). On a both proposal either city can be item by item while
+  // the other is a tier, or both can be — which is how it's actually sold.
+  const menuOfferedEvents = scopedEvents.filter((key) => A_LA_CARTE_EVENTS.includes(key));
+  const menuOffered = menuOfferedEvents.length > 0;
+  /** The in-scope cities actually being sold à la carte. */
+  const menuScope = menuOfferedEvents.filter((key) => menuSel.includes(key));
+  const onMenu = menuScope.length > 0;
 
   /**
-   * The card behind an à la carte item. Branding items are ordinary
-   * activation modules from the deck; speaking items have none.
+   * The card behind an à la carte item at a given city. Branding items are
+   * ordinary activation modules from the deck; speaking items have none. New
+   * York has its own catalog, so "both" (London + Asia) never counts for it.
    */
-  const menuModuleFor = (item: { match?: RegExp }) =>
-    item.match
-      ? modules.find(
-          (m) =>
-            m.category === 'activation' &&
-            item.match!.test(m.title) &&
-            ['both', menuEvent].includes((m.region || '').toLowerCase())
-        )
-      : undefined;
+  const menuModuleFor = (item: { match?: RegExp }, eventKey: string) => {
+    if (!item.match) return undefined;
+    const regions = eventKey === 'nyc' ? ['nyc'] : ['both', eventKey];
+    return modules.find(
+      (m) =>
+        m.category === 'activation' &&
+        item.match!.test(m.title) &&
+        regions.includes((m.region || '').toLowerCase())
+    );
+  };
 
-  /** The picked items, with their prices, ready to save. */
-  const menuLines: MenuLine[] = menuPicks.map((key) => {
-    const item = MENU_ITEMS.find((i) => i.key === key);
-    const module = item ? menuModuleFor(item) : undefined;
-    return {
-      key,
-      label: item?.label ?? key,
-      event: menuEvent,
-      moduleId: module?.id ?? null,
-      price: menuPrices[key] || null,
-    };
-  });
-
-  const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
+  /** The picked items across every à la carte city, with prices, ready to save. */
+  const menuLines: MenuLine[] = menuScope.flatMap((eventKey) =>
+    MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(eventKey, item.key))).map((item) => {
+      const module = menuModuleFor(item, eventKey);
+      return {
+        key: item.key,
+        label: item.label,
+        event: eventKey,
+        moduleId: module?.id ?? null,
+        price: menuPrices[menuKey(eventKey, item.key)] || null,
+      };
+    })
+  );
 
   /** The standard price for a tier at one event, from that event's table. */
   const priceFor = (eventKey: string, tier: string) => {
@@ -422,10 +445,17 @@ export function ProposalForm({
     return typed ?? parsePrice(line.list);
   };
 
-  /** The à la carte items' total, for the summary and for what's quoted. */
+  /** One à la carte city's item total. */
+  const menuTotalForEvent = (eventKey: string) =>
+    menuPicksForEvent(eventKey).reduce<number | null>((sum, itemKey) => {
+      const value = parsePrice(menuPrices[menuKey(eventKey, itemKey)] ?? '');
+      return value === null ? sum : (sum ?? 0) + value;
+    }, null);
+
+  /** The à la carte items' total across every city, for the summary and quote. */
   const menuTotal = onMenu
-    ? menuPicks.reduce<number | null>((sum, key) => {
-        const value = parsePrice(menuPrices[key] ?? '');
+    ? menuScope.reduce<number | null>((sum, eventKey) => {
+        const value = menuTotalForEvent(eventKey);
         return value === null ? sum : (sum ?? 0) + value;
       }, null)
     : null;
@@ -493,7 +523,7 @@ export function ProposalForm({
 
   const sessionEvents = scopedEvents.filter((key) => {
     if (addedSpeaking(key)) return true;
-    if (onMenu && key === menuEvent) return menuPicks.some((pick) => isSpeaking(pick));
+    if (onMenuFor(key)) return menuPicksForEvent(key).some((pick) => isSpeaking(pick));
     return !tierAt(key) || stageFor(key) !== '';
   });
   const contentOffered = sessionEvents.length > 0;
@@ -543,7 +573,7 @@ export function ProposalForm({
   // Events with a chart to tweak: a tier city once its tier is picked, and the
   // à la carte city too — it has no tier of its own, but the same chart's
   // benefits (speaking included) can still be added on to the package.
-  const isMenuEvent = (key: string) => onMenu && key === menuEvent;
+  const isMenuEvent = (key: string) => onMenuFor(key);
   const addOnEvents = scopedEvents.filter(
     (key) => !!tierTableFor(key) && (isMenuEvent(key) || !!tierAt(key))
   );
@@ -643,16 +673,22 @@ export function ProposalForm({
     if (!company.trim()) return setError('Company is required.');
     // Autofill has put a rep's own address in here before now.
     if (/@/.test(company)) return setError('Company looks like an email address. Check the field.');
+    // Every city sold à la carte needs at least one item. Checked per city so
+    // a both proposal that's à la carte in one and a tier in the other reports
+    // the empty side by name.
+    const menuEmpty = menuScope.filter((key) => !menuPicksForEvent(key).length);
+    if (menuEmpty.length) {
+      const where = bothEvents
+        ? ` for ${menuEmpty.map((k) => EVENTS.find((e) => e.key === k)?.label ?? k).join(' and ')}`
+        : '';
+      return setError(`Pick at least one item${where}.`);
+    }
     // Gold is the one tier sold without activations, so it's the one case
     // where an empty proposal is legitimate. Checked per event, so a
-    // both-events proposal can be Gold in one city and not the other.
-    if (onMenu && !menuPicks.length) {
-      return setError('Pick at least one item.');
-    }
-    const eventsMissingActivations = onMenu
-      ? []
-      : scopedEvents.filter(
-      (key) => !cart.some((k) => cartEvent(k) === key)
+    // both-events proposal can be Gold in one city and not the other. À la
+    // carte cities are excluded — they carry items, not activations.
+    const eventsMissingActivations = scopedEvents.filter(
+      (key) => !onMenuFor(key) && !cart.some((k) => cartEvent(k) === key)
     );
     const notGold = eventsMissingActivations.filter(
       (key) => (tierAt(key) || '').toLowerCase() !== 'gold'
@@ -714,15 +750,17 @@ export function ProposalForm({
           // À la carte branding items are ordinary activation modules, so
           // they're linked the same way and render as the same cards on the
           // proposal. Speaking items have no module and are carried by
-          // aLaCarte alone.
-          modules: onMenu
-            ? menuLines
-                .filter((line) => line.moduleId)
-                .map((line) => ({ moduleId: line.moduleId as string, event: line.event }))
-            : cart.map((key) => ({
-                moduleId: cartModuleId(key),
-                event: cartEvent(key),
-              })),
+          // aLaCarte alone. A mixed both proposal keeps both halves: the tier
+          // cities' cart picks (dropping any that belong to an à la carte city)
+          // and the à la carte cities' branding modules.
+          modules: [
+            ...cart
+              .filter((key) => !onMenuFor(cartEvent(key) ?? ''))
+              .map((key) => ({ moduleId: cartModuleId(key), event: cartEvent(key) })),
+            ...menuLines
+              .filter((line) => line.moduleId)
+              .map((line) => ({ moduleId: line.moduleId as string, event: line.event })),
+          ],
         }),
       });
       const data = await res.json();
@@ -799,12 +837,10 @@ export function ProposalForm({
                       {options.map((t) => (
                         <Choice
                           key={t}
-                          selected={tiersByEvent[e.key] === t && !(onMenu && e.key === menuEvent)}
+                          selected={tiersByEvent[e.key] === t && !onMenuFor(e.key)}
                           onClick={() => {
-                            if (onMenu && e.key === menuEvent) {
-                              setSaleMode('tier');
-                              setMenuPicks([]);
-                            }
+                            // Picking a tier takes this city off the à la carte menu.
+                            setMenuSel((current) => current.filter((k) => k !== e.key));
                             setTiersByEvent((current) => {
                               const next = { ...current };
                               if (next[e.key] === t) delete next[e.key];
@@ -818,9 +854,9 @@ export function ProposalForm({
                       ))}
                       {A_LA_CARTE_EVENTS.includes(e.key) && (
                         <Choice
-                          selected={onMenu && e.key === menuEvent}
+                          selected={onMenuFor(e.key)}
                           onClick={() => {
-                            setSaleMode('menu');
+                            setMenuSel((current) => [...new Set([...current, e.key])]);
                             // No tier for the city being sold item by item.
                             setTiersByEvent((current) => {
                               const next = { ...current };
@@ -853,10 +889,9 @@ export function ProposalForm({
                     selected={!onMenu && sponsorTier === t}
                     onClick={() => {
                       // Single-select: this IS the tier the sponsor is buying,
-                      // chosen here and shown locked on the Sponsor step. Coming
-                      // back from à la carte, its picks go with it.
-                      setSaleMode('tier');
-                      setMenuPicks([]);
+                      // chosen here and shown locked on the Sponsor step. Picking
+                      // a tier takes the event off the à la carte menu.
+                      setMenuSel([]);
                       if (sponsorTier === t) {
                         setSponsorTier('');
                         setTierFilter([]);
@@ -870,12 +905,12 @@ export function ProposalForm({
                   </Choice>
                 ))}
                 {/* Sits with the tiers because it's the same decision: what
-                    this sponsor is buying. Asia only for now. */}
+                    this sponsor is buying. Offered wherever the event sells it. */}
                 {menuOffered && (
                   <Choice
                     selected={onMenu}
                     onClick={() => {
-                      setSaleMode('menu');
+                      setMenuSel(menuOfferedEvents);
                       setTierFilter([]);
                       setSponsorTier('');
                     }}
@@ -898,13 +933,13 @@ export function ProposalForm({
           title={onMenu && !bothEvents ? 'Choose items' : 'Choose activations'}
           hint={`${cart.length + menuPicks.length} selected`}
         >
-          {onMenu && (
-            <div style={{ marginBottom: 28 }}>
-              {/* À la carte is sold for one city (Asia today); heading it with
-                  the event keeps it consistent with the tier groups below. */}
+          {/* One block per city sold à la carte — a both proposal can have two
+              — each headed with its event so it reads like the tier groups. */}
+          {menuScope.map((eventKey) => (
+            <div key={`menu-${eventKey}`} style={{ marginBottom: 28 }}>
               <div className="bx-subhead">
                 <span className="t dim">
-                  {ALL_EVENTS.find((e) => e.key === menuEvent)?.label ?? 'À la carte'}
+                  {ALL_EVENTS.find((e) => e.key === eventKey)?.label ?? 'À la carte'}
                 </span>
                 <span className="rule" />
               </div>
@@ -916,22 +951,16 @@ export function ProposalForm({
                   <div className="bx-flabel" style={{ marginBottom: 10 }}>{group.heading}</div>
                   <div className="bx-cards">
                     {group.items.map((item) => {
-                      const picked = menuPicks.includes(item.key);
+                      const picked = menuPicks.includes(menuKey(eventKey, item.key));
                       // Branding items are the same cards a tier proposal sells,
                       // so they show the deck's own title and description rather
                       // than the shorthand on the à la carte slide.
-                      const module = menuModuleFor(item);
+                      const module = menuModuleFor(item, eventKey);
                       return (
                         <button
                           type="button"
                           key={item.key}
-                          onClick={() =>
-                            setMenuPicks((current) =>
-                              current.includes(item.key)
-                                ? current.filter((k) => k !== item.key)
-                                : [...current, item.key]
-                            )
-                          }
+                          onClick={() => toggleMenuPick(eventKey, item.key)}
                           className={`bx-selcard${picked ? ' sel' : ''}`}
                         >
                           <span className="bx-cbox">
@@ -958,7 +987,7 @@ export function ProposalForm({
                 </div>
               ))}
             </div>
-          )}
+          ))}
 
           {groups.length === 0 && !onMenu && (
             <p className="mb-6 text-sm text-neutral-500">
@@ -1440,7 +1469,8 @@ export function ProposalForm({
                   );
                   // Sold item by item, so there is no tier to choose here —
                   // this is where its prices are set instead.
-                  if (onMenu && e.key === menuEvent) {
+                  if (onMenuFor(e.key)) {
+                    const picks = menuPicksForEvent(e.key);
                     return (
                       <Fieldset
                         key={e.key}
@@ -1448,24 +1478,24 @@ export function ProposalForm({
                         hint="Set the price for each item you picked."
                         stackHint
                       >
-                        {menuPicks.length === 0 ? (
+                        {picks.length === 0 ? (
                           <p className="text-sm text-neutral-500">
                             No items picked yet. Choose them in step 2.
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {MENU_ITEMS.filter((item) => menuPicks.includes(item.key)).map(
+                            {MENU_ITEMS.filter((item) => picks.includes(item.key)).map(
                               (item) => (
                                 <div key={item.key} className="flex items-center gap-3">
                                   <span className="flex-1 text-sm text-neutral-300">
                                     {item.label}
                                   </span>
                                   <Input
-                                    value={menuPrices[item.key] ?? ''}
+                                    value={menuPrices[menuKey(e.key, item.key)] ?? ''}
                                     onChange={(ev) =>
                                       setMenuPrices((current) => ({
                                         ...current,
-                                        [item.key]: ev.target.value,
+                                        [menuKey(e.key, item.key)]: ev.target.value,
                                       }))
                                     }
                                     placeholder="Price"
@@ -1507,21 +1537,21 @@ export function ProposalForm({
                   hint="Set the price for each item you picked."
                   stackHint
                 >
-                  {menuPicks.length === 0 ? (
+                  {menuPicksForEvent(event).length === 0 ? (
                     <p className="text-sm text-neutral-500">
                       No items picked yet. Choose them in step 2.
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {MENU_ITEMS.filter((item) => menuPicks.includes(item.key)).map((item) => (
+                      {MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(event, item.key))).map((item) => (
                         <div key={item.key} className="flex items-center gap-3">
                           <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
                           <Input
-                            value={menuPrices[item.key] ?? ''}
+                            value={menuPrices[menuKey(event, item.key)] ?? ''}
                             onChange={(e) =>
                               setMenuPrices((current) => ({
                                 ...current,
-                                [item.key]: e.target.value,
+                                [menuKey(event, item.key)]: e.target.value,
                               }))
                             }
                             placeholder="Price"
@@ -1628,17 +1658,21 @@ export function ProposalForm({
                       <span>{line.price ?? '—'}</span>
                     </div>
                   ))}
-                  {/* One line for the items, so a mixed proposal's total is
-                      obviously the sum of a tier and a basket rather than
-                      appearing to ignore half of what's being sold. */}
-                  {menuTotal !== null && (
-                    <div className="flex justify-between text-neutral-400">
-                      <span>
-                        {EVENTS.find((e) => e.key === menuEvent)?.label ?? menuEvent} · À la carte
-                      </span>
-                      <span>{formatPrice(menuTotal)}</span>
-                    </div>
-                  )}
+                  {/* One line per à la carte city, so a mixed proposal's total
+                      is obviously the sum of any tiers and each basket rather
+                      than appearing to ignore half of what's being sold. */}
+                  {menuScope.map((eventKey) => {
+                    const subtotal = menuTotalForEvent(eventKey);
+                    if (subtotal === null) return null;
+                    return (
+                      <div key={eventKey} className="flex justify-between text-neutral-400">
+                        <span>
+                          {ALL_EVENTS.find((e) => e.key === eventKey)?.label ?? eventKey} · À la carte
+                        </span>
+                        <span>{formatPrice(subtotal)}</span>
+                      </div>
+                    );
+                  })}
                   <div
                     className={`flex justify-between ${
                       priceLines.length || menuTotal !== null

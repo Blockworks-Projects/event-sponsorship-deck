@@ -1,10 +1,12 @@
 // The à la carte menu, from the "A La Carte Overview" slide in the builder
 // deck. Selling individual items instead of a tier.
 //
-// Asia only at the moment. The list lives here rather than being read off the
-// slide because the slide is a picture of a list — the items themselves are
-// already in the module library, and what's needed is which of them are sold
-// this way.
+// Offered at every event now (London, New York and Asia), and on a both-events
+// proposal each city stands on its own — either can be sold à la carte while
+// the other is on a tier, or both à la carte. The list lives here rather than
+// being read off the slide because the slide is a picture of a list — the
+// items themselves are already in the module library, and what's needed is
+// which of them are sold this way.
 
 export interface MenuItem {
   key: string;
@@ -19,7 +21,7 @@ export interface MenuItem {
 }
 
 /** Events where items can be bought individually. */
-export const A_LA_CARTE_EVENTS = ['asia'];
+export const A_LA_CARTE_EVENTS = ['london', 'asia', 'nyc'];
 
 export const BRANDING_ITEMS: MenuItem[] = [
   { key: 'welcome-gift', label: 'Welcome Gift', match: /welcome gift/i },

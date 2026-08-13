@@ -18,6 +18,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Blockworks Proposals",
   description: "Custom sponsorship proposals for Digital Asset Summit.",
+  // The Blockworks mark, so proposal links and browser tabs stop showing the
+  // default Vercel favicon. Served straight from /public — no dependency on
+  // the app-directory icon convention.
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({
