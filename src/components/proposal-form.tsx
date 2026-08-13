@@ -11,8 +11,6 @@ import { AccountPicker, type Account } from '@/components/account-picker';
 import { SELLERS } from '@/lib/sellers';
 import {
   A_LA_CARTE_EVENTS,
-  BRANDING_ITEMS,
-  MENU_ITEMS,
   SPEAKING_ITEMS,
   isSpeaking,
   type MenuLine,
@@ -168,11 +166,6 @@ export function ProposalForm({
   );
   /** Is this event being sold item by item rather than as a tier? */
   const onMenuFor = (eventKey: string) => menuSel.includes(eventKey);
-  /** The item keys picked for one city, in menu order. */
-  const menuPicksForEvent = (eventKey: string) =>
-    MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(eventKey, item.key))).map(
-      (item) => item.key
-    );
   const toggleMenuPick = (eventKey: string, itemKey: string) =>
     setMenuPicks((current) => {
       const key = menuKey(eventKey, itemKey);
@@ -305,6 +298,45 @@ export function ProposalForm({
     [modules]
   );
 
+  // Every activation a city sells — anything listed under that event. "both"
+  // means London + Asia (the 2026 cities), never New York, which has its own
+  // catalog. This is the source for the à la carte branding items: rather than
+  // a fixed list, a city can be sold any of its own activations item by item.
+  const activationsForEvent = (eventKey: string) =>
+    activations.filter((m) => {
+      const region = (m.region || '').toLowerCase();
+      const bothApplies = region === 'both' && eventKey !== 'nyc';
+      return region === eventKey || bothApplies;
+    });
+
+  /**
+   * The à la carte menu for one city: every activation it sells (each carrying
+   * its module, so it shows the same card a tier proposal would), then the
+   * speaking slots, which have no module of their own.
+   */
+  const menuItemsForEvent = (
+    eventKey: string
+  ): { key: string; label: string; description?: string; moduleId: string | null }[] => [
+    ...activationsForEvent(eventKey).map((m) => ({
+      key: m.id,
+      label: m.title,
+      description: m.description ?? undefined,
+      moduleId: m.id,
+    })),
+    ...SPEAKING_ITEMS.map((s) => ({
+      key: s.key,
+      label: s.label,
+      description: undefined,
+      moduleId: null,
+    })),
+  ];
+
+  /** The item keys picked for one city, in menu order. */
+  const menuPicksForEvent = (eventKey: string) =>
+    menuItemsForEvent(eventKey)
+      .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
+      .map((item) => item.key);
+
   /**
    * The activations on offer, bucketed by event and then tier — the way
    * they're sold, so a rep works down a group instead of hunting a flat list.
@@ -374,34 +406,17 @@ export function ProposalForm({
   const menuScope = menuOfferedEvents.filter((key) => menuSel.includes(key));
   const onMenu = menuScope.length > 0;
 
-  /**
-   * The card behind an à la carte item at a given city. Branding items are
-   * ordinary activation modules from the deck; speaking items have none. New
-   * York has its own catalog, so "both" (London + Asia) never counts for it.
-   */
-  const menuModuleFor = (item: { match?: RegExp }, eventKey: string) => {
-    if (!item.match) return undefined;
-    const regions = eventKey === 'nyc' ? ['nyc'] : ['both', eventKey];
-    return modules.find(
-      (m) =>
-        m.category === 'activation' &&
-        item.match!.test(m.title) &&
-        regions.includes((m.region || '').toLowerCase())
-    );
-  };
-
   /** The picked items across every à la carte city, with prices, ready to save. */
   const menuLines: MenuLine[] = menuScope.flatMap((eventKey) =>
-    MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(eventKey, item.key))).map((item) => {
-      const module = menuModuleFor(item, eventKey);
-      return {
+    menuItemsForEvent(eventKey)
+      .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
+      .map((item) => ({
         key: item.key,
         label: item.label,
         event: eventKey,
-        moduleId: module?.id ?? null,
+        moduleId: item.moduleId,
         price: menuPrices[menuKey(eventKey, item.key)] || null,
-      };
-    })
+      }))
   );
 
   /** The standard price for a tier at one event, from that event's table. */
@@ -943,47 +958,63 @@ export function ProposalForm({
                 </span>
                 <span className="rule" />
               </div>
+              {/* Branding is every activation the city sells — anything listed
+                  under the event — then the speaking slots. Each is priced by
+                  hand on the last step. */}
               {[
-                { heading: 'Branding & Activations', items: BRANDING_ITEMS },
-                { heading: 'Speaking', items: SPEAKING_ITEMS },
+                {
+                  heading: 'Branding & Activations',
+                  items: activationsForEvent(eventKey).map((m) => ({
+                    key: m.id,
+                    label: m.title,
+                    description: m.description ?? undefined,
+                  })),
+                  empty: 'No activations have synced for this event yet.',
+                },
+                {
+                  heading: 'Speaking',
+                  items: SPEAKING_ITEMS.map((s) => ({
+                    key: s.key,
+                    label: s.label,
+                    description: undefined as string | undefined,
+                  })),
+                  empty: null,
+                },
               ].map((group) => (
                 <div key={group.heading} style={{ marginBottom: 18 }}>
                   <div className="bx-flabel" style={{ marginBottom: 10 }}>{group.heading}</div>
-                  <div className="bx-cards">
-                    {group.items.map((item) => {
-                      const picked = menuPicks.includes(menuKey(eventKey, item.key));
-                      // Branding items are the same cards a tier proposal sells,
-                      // so they show the deck's own title and description rather
-                      // than the shorthand on the à la carte slide.
-                      const module = menuModuleFor(item, eventKey);
-                      return (
-                        <button
-                          type="button"
-                          key={item.key}
-                          onClick={() => toggleMenuPick(eventKey, item.key)}
-                          className={`bx-selcard${picked ? ' sel' : ''}`}
-                        >
-                          <span className="bx-cbox">
-                            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
-                              <path d="M5 12l5 5L19 6" />
-                            </svg>
-                          </span>
-                          <span>
-                            <span className="at">{module?.title ?? item.label}</span>
-                            {module?.description && (
-                              <span className="ad">
-                                {module.description.slice(0, 90)}
-                                {module.description.length > 90 ? '…' : ''}
-                              </span>
-                            )}
-                            {!module && item.match && (
-                              <span className="ad">Not found in the synced deck yet.</span>
-                            )}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {group.items.length === 0 && group.empty ? (
+                    <p className="bx-hint" style={{ marginTop: 0 }}>{group.empty}</p>
+                  ) : (
+                    <div className="bx-cards">
+                      {group.items.map((item) => {
+                        const picked = menuPicks.includes(menuKey(eventKey, item.key));
+                        return (
+                          <button
+                            type="button"
+                            key={item.key}
+                            onClick={() => toggleMenuPick(eventKey, item.key)}
+                            className={`bx-selcard${picked ? ' sel' : ''}`}
+                          >
+                            <span className="bx-cbox">
+                              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
+                                <path d="M5 12l5 5L19 6" />
+                              </svg>
+                            </span>
+                            <span>
+                              <span className="at">{item.label}</span>
+                              {item.description && (
+                                <span className="ad">
+                                  {item.description.slice(0, 90)}
+                                  {item.description.length > 90 ? '…' : ''}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1484,8 +1515,9 @@ export function ProposalForm({
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {MENU_ITEMS.filter((item) => picks.includes(item.key)).map(
-                              (item) => (
+                            {menuItemsForEvent(e.key)
+                              .filter((item) => picks.includes(item.key))
+                              .map((item) => (
                                 <div key={item.key} className="flex items-center gap-3">
                                   <span className="flex-1 text-sm text-neutral-300">
                                     {item.label}
@@ -1543,7 +1575,9 @@ export function ProposalForm({
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {MENU_ITEMS.filter((item) => menuPicks.includes(menuKey(event, item.key))).map((item) => (
+                      {menuItemsForEvent(event)
+                        .filter((item) => menuPicks.includes(menuKey(event, item.key)))
+                        .map((item) => (
                         <div key={item.key} className="flex items-center gap-3">
                           <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
                           <Input
