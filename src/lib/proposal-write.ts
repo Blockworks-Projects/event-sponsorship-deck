@@ -30,6 +30,13 @@ export interface ProposalInput {
    * goes at its standard price.
    */
   eventPrices?: Record<string, string>;
+  /**
+   * Charged extra activations on a package city, summed per event. A tier
+   * includes one activation; any others the sponsor picks are added at their à
+   * la carte price. Folded into that event's price so the total is package +
+   * extras. Keyed by event, e.g. {london: 40000}.
+   */
+  activationExtras?: Record<string, number>;
   /** Selling individual items instead of a tier. Each line carries its price. */
   aLaCarte?: MenuLine[];
   logoUrl?: string;
@@ -129,7 +136,10 @@ export async function proposalColumns(input: ProposalInput) {
   // difference. Snapshotted onto the proposal so the quote can't move when
   // someone edits a tier table months later.
   const lines = entries.map(([event, tier], i) => {
-    const list = parsePrice(standard[i]);
+    // The package price plus any charged extra activations at this city.
+    const base = parsePrice(standard[i]);
+    const extra = input.activationExtras?.[event] ?? 0;
+    const list = base === null ? (extra > 0 ? extra : null) : base + extra;
     const typed = parsePrice(input.eventPrices?.[event] ?? '');
     const net = typed ?? list;
     const off = list !== null && net !== null && list > net ? list - net : null;

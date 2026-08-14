@@ -94,9 +94,18 @@ export interface Proposal {
     discount: string | null;
   }[] | null;
   event_discounts: Record<string, { amount: number | null }> | null;
-  /** Items sold without a tier, each priced by hand. Asia only at present. */
+  /** Items sold without a tier, each priced by hand, plus any included-pass
+   *  (GA/VIP) counts, which carry a qty rather than a price. Offered at every
+   *  event, and per city on a both-events proposal. */
   a_la_carte:
-    | { key: string; label: string; event: string; moduleId?: string | null; price?: string | null }[]
+    | {
+        key: string;
+        label: string;
+        event: string;
+        moduleId?: string | null;
+        price?: string | null;
+        qty?: number | null;
+      }[]
     | null;
   include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session

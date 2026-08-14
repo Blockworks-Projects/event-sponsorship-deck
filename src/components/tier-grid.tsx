@@ -31,8 +31,12 @@ interface Column {
   label: string;
   tier: string;
   table?: SponsorshipModule;
-  /** À la carte column: its rows are the items bought, not tier benefits. */
-  items?: string[];
+  /**
+   * À la carte column: its rows are what was bought, not tier benefits. Each
+   * carries the value to show — "Included" for a picked item, or the count for
+   * an included pass row (General Admission / VIP Tickets).
+   */
+  items?: { label: string; value: string }[];
 }
 
 export function TierGrid({
@@ -60,11 +64,12 @@ export function TierGrid({
   // so its column lists what was actually bought. A proposal can have more than
   // one à la carte city, so group the items by event — one column each.
   if (menu.length) {
-    const byEvent = new Map<string, string[]>();
+    const byEvent = new Map<string, { label: string; value: string }[]>();
     for (const item of menu) {
-      const items = byEvent.get(item.event) ?? [];
-      items.push(item.label);
-      byEvent.set(item.event, items);
+      const rows = byEvent.get(item.event) ?? [];
+      // A ticket line carries a pass count; a picked item is simply "Included".
+      rows.push({ label: item.label, value: item.qty != null ? String(item.qty) : 'Included' });
+      byEvent.set(item.event, rows);
     }
     for (const [event, items] of byEvent) {
       columns.push({
@@ -86,8 +91,8 @@ export function TierGrid({
   columns.forEach((column) => {
     // An à la carte column contributes its items as rows; a tier column
     // contributes its benefits.
-    for (const label of column.items ?? []) {
-      if (!labels.includes(label)) labels.push(label);
+    for (const item of column.items ?? []) {
+      if (!labels.includes(item.label)) labels.push(item.label);
     }
     (column.table?.tier_rows ?? []).forEach((row) => {
       if (hidesKioskRow(proposal.include_kiosk, row.label)) return;
@@ -102,7 +107,7 @@ export function TierGrid({
   const valueFor = (column: Column, label: string) => {
     const ov = overrides[column.event];
     if (ov?.removed?.includes(label)) return null;
-    if (column.items) return column.items.includes(label) ? 'Included' : null;
+    if (column.items) return column.items.find((i) => i.label === label)?.value ?? null;
     const row = (column.table?.tier_rows ?? []).find((r) => r.label === label);
     const raw = row?.values[column.tier.toLowerCase()]?.trim();
     if (!raw || NOT_INCLUDED.test(raw)) {

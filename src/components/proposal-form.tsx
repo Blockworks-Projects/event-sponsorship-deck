@@ -11,8 +11,10 @@ import { AccountPicker, type Account } from '@/components/account-picker';
 import { SELLERS } from '@/lib/sellers';
 import {
   A_LA_CARTE_EVENTS,
-  SPEAKING_ITEMS,
+  TICKET_ITEMS,
+  catalogFor,
   isSpeaking,
+  isTicket,
   type MenuLine,
 } from '@/lib/a-la-carte';
 import { hidesKioskRow } from '@/lib/kiosk';
@@ -65,7 +67,8 @@ export function ProposalForm({
   existing?: Proposal;
   existingModuleIds?: string[];
   /** The New York side: the event is fixed to NYC and the Asia/London/Both
-   *  picker never appears. À la carte is still offered — New York sells it too. */
+   *  picker never appears. À la carte isn't offered — NYC has no price list, so
+   *  it is package-only. */
   nycOnly?: boolean;
 }) {
   const router = useRouter();
@@ -154,16 +157,31 @@ export function ProposalForm({
     [...new Set((existing?.a_la_carte ?? []).map((line) => line.event))]
   );
   const [menuPicks, setMenuPicks] = useState<string[]>(
-    (existing?.a_la_carte ?? []).map((line) => menuKey(line.event, line.key))
+    (existing?.a_la_carte ?? [])
+      .filter((line) => !isTicket(line.key))
+      .map((line) => menuKey(line.event, line.key))
   );
   const [menuPrices, setMenuPrices] = useState<Record<string, string>>(
     Object.fromEntries(
-      (existing?.a_la_carte ?? []).map((line) => [
-        menuKey(line.event, line.key),
-        String(parsePrice(line.price) ?? ''),
-      ])
+      (existing?.a_la_carte ?? [])
+        .filter((line) => !isTicket(line.key))
+        .map((line) => [menuKey(line.event, line.key), String(parsePrice(line.price) ?? '')])
     )
   );
+  // GA/VIP pass counts included in an à la carte package, keyed "event|ticketKey".
+  // Included, not priced: they show on the proposal as counts but add nothing to
+  // the total. A tier bundles these in; an à la carte package sets them by hand.
+  const [menuTickets, setMenuTickets] = useState<Record<string, string>>(
+    Object.fromEntries(
+      (existing?.a_la_carte ?? [])
+        .filter((line) => isTicket(line.key) && line.qty != null)
+        .map((line) => [menuKey(line.event, line.key), String(line.qty)])
+    )
+  );
+  // A package (tier) city includes one activation; any others the sponsor picks
+  // are charged at their à la carte price. This records which picked activation
+  // is the included (free) one, per event — defaulting to the first picked.
+  const [includedActivation, setIncludedActivation] = useState<Record<string, string>>({});
   /** Is this event being sold item by item rather than as a tier? */
   const onMenuFor = (eventKey: string) => menuSel.includes(eventKey);
   const toggleMenuPick = (eventKey: string, itemKey: string) =>
@@ -298,10 +316,9 @@ export function ProposalForm({
     [modules]
   );
 
-  // Every activation a city sells — anything listed under that event. "both"
-  // means London + Asia (the 2026 cities), never New York, which has its own
-  // catalog. This is the source for the à la carte branding items: rather than
-  // a fixed list, a city can be sold any of its own activations item by item.
+  // Every activation a city sells, from the synced deck. "both" means London +
+  // Asia (the 2026 cities), never New York. Used to find the card behind a
+  // catalogue item and to price a package's extra activations.
   const activationsForEvent = (eventKey: string) =>
     activations.filter((m) => {
       const region = (m.region || '').toLowerCase();
@@ -309,33 +326,91 @@ export function ProposalForm({
       return region === eventKey || bothApplies;
     });
 
+  // Match a catalogue item (or a picked module) to the synced activation by
+  // title. Exact normalised match first, then a title that starts with the
+  // wanted one — so "Event App" finds "Event App Sponsor" without "Livestream
+  // Sponsor" swallowing "Rollup TV Livestream Sponsor".
+  const normalizeTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const moduleForLabel = (eventKey: string, label: string) => {
+    const want = normalizeTitle(label);
+    const pool = activationsForEvent(eventKey);
+    return (
+      pool.find((m) => normalizeTitle(m.title) === want) ??
+      pool.find((m) => normalizeTitle(m.title).startsWith(want)) ??
+      undefined
+    );
+  };
+
+  // The catalogue price for a picked activation module, matched back by title.
+  // Unmatched (a synced activation not on the price list) counts as no charge.
+  const catalogPriceForModule = (eventKey: string, module: SponsorshipModule): number => {
+    const want = normalizeTitle(module.title);
+    const item = catalogFor(eventKey).find(
+      (c) => normalizeTitle(c.label) === want || want.startsWith(normalizeTitle(c.label))
+    );
+    return item?.price ?? 0;
+  };
+
   /**
-   * The à la carte menu for one city: every activation it sells (each carrying
-   * its module, so it shows the same card a tier proposal would), then the
-   * speaking slots, which have no module of their own.
+   * The à la carte menu for one city: the priced catalogue, each item resolved
+   * to its activation module (so it shows the same card a tier proposal would)
+   * and carrying its default price.
    */
   const menuItemsForEvent = (
     eventKey: string
-  ): { key: string; label: string; description?: string; moduleId: string | null }[] => [
-    ...activationsForEvent(eventKey).map((m) => ({
-      key: m.id,
-      label: m.title,
-      description: m.description ?? undefined,
-      moduleId: m.id,
-    })),
-    ...SPEAKING_ITEMS.map((s) => ({
-      key: s.key,
-      label: s.label,
-      description: undefined,
-      moduleId: null,
-    })),
-  ];
+  ): { key: string; label: string; description?: string; moduleId: string | null; price: number }[] =>
+    catalogFor(eventKey).map((item) => {
+      const module = moduleForLabel(eventKey, item.label);
+      return {
+        key: item.key,
+        label: item.label,
+        description: module?.description ?? undefined,
+        moduleId: module?.id ?? null,
+        price: item.price,
+      };
+    });
+
+  /** The effective price of one picked item: the rep's override, or the
+   *  catalogue default when they haven't touched it. */
+  const menuPriceFor = (eventKey: string, item: { key: string; price: number }) => {
+    const raw = menuPrices[menuKey(eventKey, item.key)];
+    return raw ?? String(item.price);
+  };
 
   /** The item keys picked for one city, in menu order. */
   const menuPicksForEvent = (eventKey: string) =>
     menuItemsForEvent(eventKey)
       .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
       .map((item) => item.key);
+
+  /** GA/VIP pass-count inputs for one à la carte city. Included, not priced —
+   *  a tier bundles these in, so an à la carte package sets them by hand. */
+  const menuTicketInputs = (eventKey: string) => (
+    <div className="mt-3 border-t border-neutral-800 pt-3">
+      <div className="mb-2 text-xs uppercase tracking-wider text-neutral-500">
+        Passes included
+      </div>
+      <div className="space-y-2">
+        {TICKET_ITEMS.map((ticket) => (
+          <div key={ticket.key} className="flex items-center gap-3">
+            <span className="flex-1 text-sm text-neutral-300">{ticket.label}</span>
+            <Input
+              value={menuTickets[menuKey(eventKey, ticket.key)] ?? ''}
+              onChange={(ev) =>
+                setMenuTickets((current) => ({
+                  ...current,
+                  [menuKey(eventKey, ticket.key)]: ev.target.value,
+                }))
+              }
+              placeholder="0"
+              inputMode="numeric"
+              className="w-40"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   /**
    * The activations on offer, bucketed by event and then tier — the way
@@ -406,18 +481,29 @@ export function ProposalForm({
   const menuScope = menuOfferedEvents.filter((key) => menuSel.includes(key));
   const onMenu = menuScope.length > 0;
 
-  /** The picked items across every à la carte city, with prices, ready to save. */
-  const menuLines: MenuLine[] = menuScope.flatMap((eventKey) =>
-    menuItemsForEvent(eventKey)
+  /** The GA/VIP pass counts set for one city, as save-ready lines. */
+  const ticketLinesForEvent = (eventKey: string): MenuLine[] =>
+    TICKET_ITEMS.flatMap((ticket) => {
+      const raw = menuTickets[menuKey(eventKey, ticket.key)];
+      const qty = raw ? parseInt(raw, 10) : NaN;
+      if (!Number.isFinite(qty) || qty <= 0) return [];
+      return [{ key: ticket.key, label: ticket.label, event: eventKey, moduleId: null, price: null, qty }];
+    });
+
+  /** The picked items across every à la carte city, with prices and any
+   *  included passes, ready to save. */
+  const menuLines: MenuLine[] = menuScope.flatMap((eventKey) => [
+    ...menuItemsForEvent(eventKey)
       .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
       .map((item) => ({
         key: item.key,
         label: item.label,
         event: eventKey,
         moduleId: item.moduleId,
-        price: menuPrices[menuKey(eventKey, item.key)] || null,
-      }))
-  );
+        price: menuPriceFor(eventKey, item) || null,
+      })),
+    ...ticketLinesForEvent(eventKey),
+  ]);
 
   /** The standard price for a tier at one event, from that event's table. */
   const priceFor = (eventKey: string, tier: string) => {
@@ -427,10 +513,46 @@ export function ProposalForm({
     return table && tier ? table.pricing[tier.toLowerCase()] ?? null : null;
   };
 
-  // One line per event being bought, and their sum.
+  // ---- Package extras: a tier includes one activation; any others are charged.
+  const tierForEventNow = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
+  /** The activations picked for one city, resolved to their modules. */
+  const pickedActivationsForEvent = (eventKey: string): SponsorshipModule[] =>
+    cart
+      .filter((k) => cartEvent(k) === eventKey)
+      .map((k) => byId.get(cartModuleId(k)))
+      .filter((m): m is SponsorshipModule => Boolean(m));
+  /** Which picked activation the package covers — the rep's mark, or the first. */
+  const includedActivationFor = (eventKey: string) => {
+    const picked = pickedActivationsForEvent(eventKey);
+    const marked = includedActivation[eventKey];
+    return marked && picked.some((m) => m.id === marked) ? marked : picked[0]?.id;
+  };
+  /** The charged extra activations on a package city (everything but the one it
+   *  includes), each at its catalogue price. Empty for an à la carte city. */
+  const extrasForEvent = (eventKey: string) => {
+    if (onMenuFor(eventKey) || !tierForEventNow(eventKey)) return [];
+    const included = includedActivationFor(eventKey);
+    return pickedActivationsForEvent(eventKey)
+      .filter((m) => m.id !== included)
+      .map((m) => ({ moduleId: m.id, label: m.title, price: catalogPriceForModule(eventKey, m) }));
+  };
+  const extrasTotalForEvent = (eventKey: string) =>
+    extrasForEvent(eventKey).reduce((sum, x) => sum + x.price, 0);
+  /** The package price plus its charged extras, as a number. */
+  const packagePriceValue = (eventKey: string, tier: string): number | null => {
+    const base = parsePrice(priceFor(eventKey, tier));
+    const extras = extrasTotalForEvent(eventKey);
+    if (base === null) return extras > 0 ? extras : null;
+    return base + extras;
+  };
+
+  // One line per event being bought (package + any extra activations), and their sum.
   const priceLines = bothEvents
-    ? EVENTS.map((e) => ({ ...e, tier: tiersByEvent[e.key] ?? '', price: priceFor(e.key, tiersByEvent[e.key] ?? '') }))
-        .filter((line) => line.tier)
+    ? EVENTS.map((e) => {
+        const tier = tiersByEvent[e.key] ?? '';
+        const value = tier ? packagePriceValue(e.key, tier) : null;
+        return { ...e, tier, price: value === null ? null : formatPrice(value) };
+      }).filter((line) => line.tier)
     : [];
   const summed = priceLines.reduce<number | null>((sum, line) => {
     const value = parsePrice(line.price);
@@ -439,8 +561,11 @@ export function ProposalForm({
 
   const listPrice = bothEvents
     ? summed === null ? null : formatPrice(summed)
-    : tierTable && sponsorTier
-    ? tierTable.pricing[sponsorTier.toLowerCase()]
+    : sponsorTier
+    ? (() => {
+        const value = packagePriceValue(event, sponsorTier);
+        return value === null ? null : formatPrice(value);
+      })()
     : null;
 
   /**
@@ -460,12 +585,14 @@ export function ProposalForm({
     return typed ?? parsePrice(line.list);
   };
 
-  /** One à la carte city's item total. */
+  /** One à la carte city's item total, at the effective (defaulted) prices. */
   const menuTotalForEvent = (eventKey: string) =>
-    menuPicksForEvent(eventKey).reduce<number | null>((sum, itemKey) => {
-      const value = parsePrice(menuPrices[menuKey(eventKey, itemKey)] ?? '');
-      return value === null ? sum : (sum ?? 0) + value;
-    }, null);
+    menuItemsForEvent(eventKey)
+      .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
+      .reduce<number | null>((sum, item) => {
+        const value = parsePrice(menuPriceFor(eventKey, item));
+        return value === null ? sum : (sum ?? 0) + value;
+      }, null);
 
   /** The à la carte items' total across every city, for the summary and quote. */
   const menuTotal = onMenu
@@ -538,7 +665,7 @@ export function ProposalForm({
 
   const sessionEvents = scopedEvents.filter((key) => {
     if (addedSpeaking(key)) return true;
-    if (onMenuFor(key)) return menuPicksForEvent(key).some((pick) => isSpeaking(pick));
+    if (onMenuFor(key)) return menuPicksForEvent(key).some((pick) => isSpeaking(key, pick));
     return !tierAt(key) || stageFor(key) !== '';
   });
   const contentOffered = sessionEvents.length > 0;
@@ -688,10 +815,12 @@ export function ProposalForm({
     if (!company.trim()) return setError('Company is required.');
     // Autofill has put a rep's own address in here before now.
     if (/@/.test(company)) return setError('Company looks like an email address. Check the field.');
-    // Every city sold à la carte needs at least one item. Checked per city so
-    // a both proposal that's à la carte in one and a tier in the other reports
-    // the empty side by name.
-    const menuEmpty = menuScope.filter((key) => !menuPicksForEvent(key).length);
+    // Every city sold à la carte needs at least one item (or some passes).
+    // Checked per city so a both proposal that's à la carte in one and a tier
+    // in the other reports the empty side by name.
+    const menuEmpty = menuScope.filter(
+      (key) => !menuPicksForEvent(key).length && !ticketLinesForEvent(key).length
+    );
     if (menuEmpty.length) {
       const where = bothEvents
         ? ` for ${menuEmpty.map((k) => EVENTS.find((e) => e.key === k)?.label ?? k).join(' and ')}`
@@ -736,6 +865,13 @@ export function ProposalForm({
           tier: bothEvents ? undefined : sponsorTier || undefined,
           tiers: bothEvents ? tiersByEvent : undefined,
           eventPrices: pricingMode === 'custom' ? eventPrices : undefined,
+          // Charged extra activations on a package city, summed per event, so
+          // the saved total is package price + extras.
+          activationExtras: scopedEvents.reduce<Record<string, number>>((acc, key) => {
+            const total = extrasTotalForEvent(key);
+            if (total > 0) acc[key] = total;
+            return acc;
+          }, {}),
           aLaCarte: onMenu ? menuLines : undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
@@ -958,37 +1094,27 @@ export function ProposalForm({
                 </span>
                 <span className="rule" />
               </div>
-              {/* Branding is every activation the city sells — anything listed
-                  under the event — then the speaking slots. Each is priced by
-                  hand on the last step. */}
+              {/* The priced catalogue, split into branding and the session
+                  slots. Each card shows its set price; the checkout on the last
+                  step lets the rep override it. */}
               {[
                 {
                   heading: 'Branding & Activations',
-                  items: activationsForEvent(eventKey).map((m) => ({
-                    key: m.id,
-                    label: m.title,
-                    description: m.description ?? undefined,
-                  })),
-                  empty: 'No activations have synced for this event yet.',
+                  items: catalogFor(eventKey).filter((i) => !i.speaking),
                 },
                 {
                   heading: 'Speaking',
-                  items: SPEAKING_ITEMS.map((s) => ({
-                    key: s.key,
-                    label: s.label,
-                    description: undefined as string | undefined,
-                  })),
-                  empty: null,
+                  items: catalogFor(eventKey).filter((i) => i.speaking),
                 },
-              ].map((group) => (
-                <div key={group.heading} style={{ marginBottom: 18 }}>
-                  <div className="bx-flabel" style={{ marginBottom: 10 }}>{group.heading}</div>
-                  {group.items.length === 0 && group.empty ? (
-                    <p className="bx-hint" style={{ marginTop: 0 }}>{group.empty}</p>
-                  ) : (
+              ]
+                .filter((group) => group.items.length)
+                .map((group) => (
+                  <div key={group.heading} style={{ marginBottom: 18 }}>
+                    <div className="bx-flabel" style={{ marginBottom: 10 }}>{group.heading}</div>
                     <div className="bx-cards">
                       {group.items.map((item) => {
                         const picked = menuPicks.includes(menuKey(eventKey, item.key));
+                        const module = moduleForLabel(eventKey, item.label);
                         return (
                           <button
                             type="button"
@@ -1002,11 +1128,14 @@ export function ProposalForm({
                               </svg>
                             </span>
                             <span>
-                              <span className="at">{item.label}</span>
-                              {item.description && (
+                              <span className="at">
+                                {item.label}
+                                <span className="ml-2 text-neutral-500">{formatPrice(item.price)}</span>
+                              </span>
+                              {module?.description && (
                                 <span className="ad">
-                                  {item.description.slice(0, 90)}
-                                  {item.description.length > 90 ? '…' : ''}
+                                  {module.description.slice(0, 90)}
+                                  {module.description.length > 90 ? '…' : ''}
                                 </span>
                               )}
                             </span>
@@ -1014,9 +1143,8 @@ export function ProposalForm({
                         );
                       })}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))}
             </div>
           ))}
 
@@ -1506,7 +1634,7 @@ export function ProposalForm({
                       <Fieldset
                         key={e.key}
                         label={`${e.label} à la carte`}
-                        hint="Set the price for each item you picked."
+                        hint="Prices are pre-filled from the catalogue — override any."
                         stackHint
                       >
                         {picks.length === 0 ? (
@@ -1523,7 +1651,7 @@ export function ProposalForm({
                                     {item.label}
                                   </span>
                                   <Input
-                                    value={menuPrices[menuKey(e.key, item.key)] ?? ''}
+                                    value={menuPrices[menuKey(e.key, item.key)] ?? String(item.price)}
                                     onChange={(ev) =>
                                       setMenuPrices((current) => ({
                                         ...current,
@@ -1537,8 +1665,17 @@ export function ProposalForm({
                                 </div>
                               )
                             )}
+                            {menuTotalForEvent(e.key) !== null && (
+                              <div className="flex items-center justify-between border-t border-neutral-800 pt-2 text-sm">
+                                <span className="text-neutral-400">Subtotal</span>
+                                <span className="font-semibold text-neutral-100">
+                                  {formatPrice(menuTotalForEvent(e.key) as number)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
+                        {menuTicketInputs(e.key)}
                       </Fieldset>
                     );
                   }
@@ -1566,7 +1703,7 @@ export function ProposalForm({
               ) : onMenu ? (
                 <Fieldset
                   label="À la carte"
-                  hint="Set the price for each item you picked."
+                  hint="Prices are pre-filled from the catalogue — override any."
                   stackHint
                 >
                   {menuPicksForEvent(event).length === 0 ? (
@@ -1581,7 +1718,7 @@ export function ProposalForm({
                         <div key={item.key} className="flex items-center gap-3">
                           <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
                           <Input
-                            value={menuPrices[menuKey(event, item.key)] ?? ''}
+                            value={menuPrices[menuKey(event, item.key)] ?? String(item.price)}
                             onChange={(e) =>
                               setMenuPrices((current) => ({
                                 ...current,
@@ -1594,8 +1731,17 @@ export function ProposalForm({
                           />
                         </div>
                       ))}
+                      {menuTotalForEvent(event) !== null && (
+                        <div className="flex items-center justify-between border-t border-neutral-800 pt-2 text-sm">
+                          <span className="text-neutral-400">Total</span>
+                          <span className="font-semibold text-neutral-100">
+                            {formatPrice(menuTotalForEvent(event) as number)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
+                  {menuTicketInputs(event)}
                 </Fieldset>
               ) : (
                 <Fieldset label="Sponsorship tier">
@@ -1621,6 +1767,69 @@ export function ProposalForm({
                   )}
                 </Fieldset>
               )}
+
+              {/* A package covers one activation; the rep marks which, and the
+                  rest are charged at their à la carte price. Only shown when a
+                  package city has more than one activation picked. */}
+              {scopedEvents
+                .filter(
+                  (key) =>
+                    !onMenuFor(key) &&
+                    tierForEventNow(key) &&
+                    pickedActivationsForEvent(key).length > 1
+                )
+                .map((key) => {
+                  const picked = pickedActivationsForEvent(key);
+                  const included = includedActivationFor(key);
+                  const extrasTotal = extrasTotalForEvent(key);
+                  return (
+                    <Fieldset
+                      key={`incl-${key}`}
+                      label={
+                        bothEvents
+                          ? `${ALL_EVENTS.find((e) => e.key === key)?.label ?? key} — included activation`
+                          : 'Included activation'
+                      }
+                      hint="The package covers one activation; the rest are added at their à la carte price."
+                      stackHint
+                    >
+                      <div className="space-y-2">
+                        {picked.map((m) => {
+                          const isIncluded = m.id === included;
+                          const price = catalogPriceForModule(key, m);
+                          return (
+                            <label key={m.id} className="flex items-center gap-3 text-sm">
+                              <input
+                                type="radio"
+                                name={`included-${key}`}
+                                checked={isIncluded}
+                                onChange={() =>
+                                  setIncludedActivation((current) => ({ ...current, [key]: m.id }))
+                                }
+                              />
+                              <span className="flex-1 text-neutral-300">{m.title}</span>
+                              <span className={isIncluded ? 'text-neutral-500' : 'text-neutral-100'}>
+                                {isIncluded
+                                  ? 'Included'
+                                  : price > 0
+                                  ? `+ ${formatPrice(price)}`
+                                  : 'No price set'}
+                              </span>
+                            </label>
+                          );
+                        })}
+                        {extrasTotal > 0 && (
+                          <div className="flex justify-between border-t border-neutral-800 pt-2 text-sm">
+                            <span className="text-neutral-400">Extra activations</span>
+                            <span className="font-semibold text-neutral-100">
+                              + {formatPrice(extrasTotal)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </Fieldset>
+                  );
+                })}
 
               {chargeLines.length > 0 && (
               <Fieldset label="Pricing">

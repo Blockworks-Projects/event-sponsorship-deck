@@ -185,8 +185,14 @@ export function PriceBreakdown({
                   <dt className="text-sm text-neutral-700">
                     {EVENT_LABEL[item.event] ?? item.event} · {item.label}
                   </dt>
+                  {/* Passes are included, not billed — show the count, not a
+                      price, so the total still reads as the sum of the items. */}
                   <dd className="text-sm font-semibold text-neutral-900">
-                    {item.price ? formatPrice(parsePrice(item.price) ?? 0) : '—'}
+                    {item.qty != null
+                      ? `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}`
+                      : item.price
+                      ? formatPrice(parsePrice(item.price) ?? 0)
+                      : '—'}
                   </dd>
                 </div>
               ))
