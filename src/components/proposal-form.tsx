@@ -85,7 +85,6 @@ export function ProposalForm({
   const [eventFilter, setEventFilter] = useState<EventFilter>(
     (existing?.event as EventFilter) ?? (nycOnly ? 'nyc' : 'london')
   );
-  const [tierFilter, setTierFilter] = useState<string[]>([]);
 
   // Step 2
   // Keyed "event|moduleId": an activation offered at both cities is a
@@ -414,53 +413,6 @@ export function ProposalForm({
     </div>
   );
 
-  /**
-   * The activations on offer, bucketed by event and then tier — the way
-   * they're sold, so a rep works down a group instead of hunting a flat list.
-   * An item marked "Both" shows under each event it applies to.
-   */
-  const groups = useMemo(() => {
-    const wanted = (eventFilter === 'both' ? EVENTS : ALL_EVENTS.filter((e) => e.key === eventFilter))
-      // A city sold à la carte picks its items from the menu, not from the
-      // tier lists — showing both would offer the same activation twice. Decided
-      // per city, so a both proposal can list London's tier activations while
-      // Asia shows its menu.
-      .filter((e) => !menuSel.includes(e.key));
-
-    return wanted
-      .map((ev) => {
-        // Across both cities each has its own tier, so each group shows only
-        // that city's tier. On a single event the tier checkboxes act as a
-        // filter instead, and an empty selection means show everything.
-        const wantedTiers =
-          eventFilter === 'both'
-            ? [tiersByEvent[ev.key]].filter(Boolean)
-            : tierFilter;
-
-        return {
-          ...ev,
-          tiers: TIERS.map((tier) => ({
-            tier,
-            items: activations.filter((m) => {
-              const region = (m.region || '').toLowerCase();
-              // "both" means London + Asia (the 2026 cities) — never New York,
-              // which is its own 2027 event with its own catalog.
-              const bothApplies = region === 'both' && ev.key !== 'nyc';
-              if (region !== ev.key && !bothApplies) return false;
-              if ((m.tier || '').toLowerCase() !== tier.toLowerCase()) return false;
-              if (wantedTiers.length && !wantedTiers.some((t) => t.toLowerCase() === tier.toLowerCase())) {
-                return false;
-              }
-              return true;
-            }),
-          })).filter((g) => g.items.length),
-        };
-      });
-    // NB: events with no matching activations are kept (not filtered out), so
-    // each event always gets a heading in step 2 — a Gold city then shows
-    // "No branding activations included" rather than silently disappearing.
-  }, [activations, eventFilter, tierFilter, tiersByEvent, menuSel]);
-
   const bothEvents = event === 'both';
   const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
 
@@ -765,13 +717,11 @@ export function ProposalForm({
     // 'both' is a proposal event in its own right now, not only a filter.
     setEvent(next);
 
-    // Drop any scoped tier the new event doesn't sell, so the filter can't
-    // silently keep excluding everything.
+    // Drop the chosen tier if the new event doesn't sell it.
     const keys =
       next === 'both' ? EVENTS.flatMap((e) => tiersForEvent(e.key)) : tiersForEvent(next);
     if (keys.length) {
       const available = new Set(keys.map((k) => k.toLowerCase()));
-      setTierFilter((current) => current.filter((t) => available.has(t.toLowerCase())));
       setSponsorTier((current) => (available.has(current.toLowerCase()) ? current : ''));
     }
   }
@@ -1011,13 +961,7 @@ export function ProposalForm({
                       // chosen here and shown locked on the Sponsor step. Picking
                       // a tier takes the event off the à la carte menu.
                       setMenuSel([]);
-                      if (sponsorTier === t) {
-                        setSponsorTier('');
-                        setTierFilter([]);
-                      } else {
-                        setSponsorTier(t);
-                        setTierFilter([t]);
-                      }
+                      setSponsorTier(sponsorTier === t ? '' : t);
                     }}
                   >
                     {t}
@@ -1030,7 +974,6 @@ export function ProposalForm({
                     selected={onMenu}
                     onClick={() => {
                       setMenuSel(menuOfferedEvents);
-                      setTierFilter([]);
                       setSponsorTier('');
                     }}
                   >
@@ -1116,139 +1059,101 @@ export function ProposalForm({
             </div>
           ))}
 
-          {groups.length === 0 && !onMenu && (
-            <p className="mb-6 text-sm text-neutral-500">
-              Nothing matches that scope. Widen the event or tiers in step 1.
-            </p>
-          )}
-
-          {groups.map((group) => (
-            <div key={group.key} style={{ marginBottom: 28 }}>
-              <div className="bx-subhead">
-                <span className="t dim">{group.label}</span>
-                <span className="rule" />
-              </div>
-              {group.tiers.length === 0 && (
-                <p className="bx-hint" style={{ marginTop: 0 }}>
-                  No branding activations included in this tier.
-                </p>
-              )}
-              {group.tiers.map(({ tier, items }) => {
-                const ids = items.map((m) => cartKey(group.key, m.id));
-                const allIn = ids.every((id) => cart.includes(id));
-                return (
-                  <div key={tier} style={{ marginBottom: 18 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <div className="bx-flabel" style={{ marginBottom: 0 }}>{tier}</div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCart(
-                            allIn
-                              ? cart.filter((id) => !ids.includes(id))
-                              : [...new Set([...cart, ...ids])]
-                          )
-                        }
-                        className="bx-linklike"
-                      >
-                        {allIn ? 'Clear group' : 'Select all'}
-                      </button>
-                    </div>
-                    <div className="bx-cards">
-                      {items.map((m) => {
-                        const on = cart.includes(cartKey(group.key, m.id));
-                        return (
-                          <button
-                            type="button"
-                            key={m.id}
-                            onClick={() => toggle(cart, cartKey(group.key, m.id), setCart)}
-                            className={`bx-selcard${on ? ' sel' : ''}`}
-                          >
-                            <span className="bx-cbox">
-                              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
-                                <path d="M5 12l5 5L19 6" />
-                              </svg>
-                            </span>
-                            <span>
-                              <span className="at">{m.title}</span>
-                              {m.description && (
-                                <span className="ad">
-                                  {m.description.slice(0, 90)}
-                                  {m.description.length > 90 ? '…' : ''}
-                                </span>
-                              )}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-
-          {/* A package includes one activation; the others become "other
-              offerings", charged separately at checkout. Choose which is the
-              included one here, while the picks are in front of the rep. */}
+          {/* Tier cities: pick the one activation the package includes from a
+              dropdown, then add any other offerings — each charged separately. */}
           {scopedEvents
-            .filter(
-              (key) =>
-                !onMenuFor(key) &&
-                tierForEventNow(key) &&
-                pickedActivationsForEvent(key).length > 0
-            )
+            .filter((key) => !onMenuFor(key) && tierForEventNow(key))
             .map((key) => {
-              const picked = pickedActivationsForEvent(key);
-              const included = includedActivationFor(key);
-              const noneIncluded = includedActivation[key] === NONE_INCLUDED;
+              const all = activationsForEvent(key);
+              const includedVal =
+                includedActivation[key] === NONE_INCLUDED
+                  ? NONE_INCLUDED
+                  : includedActivationFor(key) ?? '';
+              const offerings = pickedActivationsForEvent(key).filter(
+                (m) => m.id !== includedActivationFor(key)
+              );
+              const addable = all.filter((m) => !cart.includes(cartKey(key, m.id)));
               return (
-                <div key={`incl-${key}`} style={{ marginBottom: 24 }}>
+                <div key={`act-${key}`} style={{ marginBottom: 28 }}>
                   <div className="bx-subhead">
                     <span className="t dim">
                       {bothEvents ? `${ALL_EVENTS.find((e) => e.key === key)?.label ?? key} · ` : ''}
-                      Included with your {tierForEventNow(key)} package
+                      {tierForEventNow(key)} package
                     </span>
                     <span className="rule" />
                   </div>
-                  <p className="bx-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-                    Choose the one activation included in the package, or none. The rest become
-                    other offerings, charged separately at checkout.
-                  </p>
-                  <div className="space-y-1">
-                    {picked.map((m) => {
-                      const isIncluded = m.id === included;
-                      return (
-                        <label key={m.id} className="flex items-center gap-3 text-sm">
-                          <input
-                            type="radio"
-                            name={`incl-step1-${key}`}
-                            checked={isIncluded}
-                            onChange={() =>
-                              setIncludedActivation((c) => ({ ...c, [key]: m.id }))
+
+                  {all.length === 0 ? (
+                    <p className="bx-hint" style={{ marginTop: 0 }}>
+                      No activations have synced for this event yet.
+                    </p>
+                  ) : (
+                    <>
+                      <Fieldset label="Included activation" hint="One activation comes with the package.">
+                        <select
+                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+                          value={includedVal}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (id === NONE_INCLUDED) {
+                              setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }));
+                            } else if (id) {
+                              setIncludedActivation((c) => ({ ...c, [key]: id }));
+                              setCart((c) => [...new Set([...c, cartKey(key, id)])]);
                             }
-                          />
-                          <span className="flex-1 text-neutral-300">{m.title}</span>
-                          <span className={isIncluded ? 'text-neutral-400' : 'text-neutral-500'}>
-                            {isIncluded ? 'Included' : 'Other offering'}
-                          </span>
-                        </label>
-                      );
-                    })}
-                    <label className="flex items-center gap-3 text-sm">
-                      <input
-                        type="radio"
-                        name={`incl-step1-${key}`}
-                        checked={noneIncluded}
-                        onChange={() =>
-                          setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }))
-                        }
-                      />
-                      <span className="flex-1 text-neutral-400">
-                        None — charge every activation
-                      </span>
-                    </label>
-                  </div>
+                          }}
+                        >
+                          <option value="">Select an activation…</option>
+                          {all.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.title}
+                            </option>
+                          ))}
+                          <option value={NONE_INCLUDED}>None — charge every activation</option>
+                        </select>
+                      </Fieldset>
+
+                      <Fieldset
+                        label="Other offerings"
+                        hint="Add as many as you like — each is charged separately at checkout."
+                      >
+                        <select
+                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+                          value=""
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (id) setCart((c) => [...new Set([...c, cartKey(key, id)])]);
+                          }}
+                        >
+                          <option value="">Add an offering…</option>
+                          {addable.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.title}
+                            </option>
+                          ))}
+                        </select>
+                        {offerings.length > 0 && (
+                          <div className="mt-3 space-y-1">
+                            {offerings.map((m) => (
+                              <div key={m.id} className="flex items-center gap-3 text-sm">
+                                <span className="flex-1 text-neutral-300">{m.title}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCart((c) => c.filter((k) => k !== cartKey(key, m.id)))
+                                  }
+                                  className="text-neutral-500 hover:text-neutral-300"
+                                  aria-label="Remove"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Fieldset>
+                    </>
+                  )}
                 </div>
               );
             })}
