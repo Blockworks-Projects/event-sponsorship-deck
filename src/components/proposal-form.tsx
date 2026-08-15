@@ -1004,7 +1004,7 @@ export function ProposalForm({
                     <option value="">Add an activation…</option>
                     {brandingAddable.map((i) => (
                       <option key={i.key} value={i.key}>
-                        {i.label} — {formatPrice(i.price)}
+                        {i.label} ({formatPrice(i.price)})
                       </option>
                     ))}
                   </select>
@@ -1131,7 +1131,7 @@ export function ProposalForm({
                             }
                           }}
                         >
-                          <option value={NONE_INCLUDED}>Undecided — sponsor selects</option>
+                          <option value={NONE_INCLUDED}>Undecided (sponsor selects)</option>
                           {all.map((m) => (
                             <option key={m.id} value={m.id}>
                               {m.title}
