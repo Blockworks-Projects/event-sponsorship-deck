@@ -2,7 +2,7 @@
 // price rule or a headshot copy that only ran on create would silently stop
 // applying the moment someone edited.
 import { supabase } from '@/lib/supabase';
-import { applyDiscount, parsePrice, formatPrice } from '@/lib/pricing';
+import { parsePrice, formatPrice } from '@/lib/pricing';
 import { validEmailList } from '@/lib/contacts';
 import type { MenuLine } from '@/lib/a-la-carte';
 import type { ContentSession } from '@/lib/types';
@@ -23,20 +23,11 @@ export interface ProposalInput {
   discountPercent?: number;
   discountAmount?: number;
   /**
-   * Custom pricing: what is actually being charged per event, e.g.
-   * {asia: '50000'}. Discounting here is nearly always a flat amount off one
-   * event ("50k instead of 60k"), so a rep types the price they're quoting
-   * rather than working out a percentage. Blank or absent means that event
-   * goes at its standard price.
+   * The authoritative charge for each event — the checkout's per-event total
+   * (package price plus any extra activations, added benefits and extra
+   * passes). May be above or below the tier's list price. Keyed by event.
    */
   eventPrices?: Record<string, string>;
-  /**
-   * Charged extra activations on a package city, summed per event. A tier
-   * includes one activation; any others the sponsor picks are added at their à
-   * la carte price. Folded into that event's price so the total is package +
-   * extras. Keyed by event, e.g. {london: 40000}.
-   */
-  activationExtras?: Record<string, number>;
   /** Selling individual items instead of a tier. Each line carries its price. */
   aLaCarte?: MenuLine[];
   logoUrl?: string;
@@ -136,10 +127,12 @@ export async function proposalColumns(input: ProposalInput) {
   // difference. Snapshotted onto the proposal so the quote can't move when
   // someone edits a tier table months later.
   const lines = entries.map(([event, tier], i) => {
-    // The package price plus any charged extra activations at this city.
-    const base = parsePrice(standard[i]);
-    const extra = input.activationExtras?.[event] ?? 0;
-    const list = base === null ? (extra > 0 ? extra : null) : base + extra;
+    // `list` is the tier's standard price (the strike-through reference).
+    // `net` is what's actually being charged for the city — the checkout's
+    // per-event total (package + any extra activations, added benefits and
+    // extra passes), which the form sends in eventPrices. It is authoritative
+    // and may sit above or below list.
+    const list = parsePrice(standard[i]);
     const typed = parsePrice(input.eventPrices?.[event] ?? '');
     const net = typed ?? list;
     const off = list !== null && net !== null && list > net ? list - net : null;
@@ -170,36 +163,24 @@ export async function proposalColumns(input: ProposalInput) {
   const netTotal = sum((line) => line.net);
   const listPrice = listTotal === null ? null : formatPrice(listTotal);
 
-  // Only a real reduction counts as a discounted price; otherwise the
-  // proposal shows a "discount" of nothing.
-  const customDiscounted =
-    listTotal !== null && netTotal !== null && netTotal < listTotal ? formatPrice(netTotal) : null;
-
-  // The old single overall discount still applies to anything that sends it.
-  const discounted =
-    customDiscounted ??
-    applyDiscount(listPrice, {
-      percent: input.discountPercent,
-      amount: input.discountAmount,
-    });
-
   const eventDiscounts = Object.fromEntries(
     lines
       .filter((line) => line.discount)
       .map((line) => [line.event, { amount: parsePrice(line.discount) }])
   );
 
-  // A typed total is a negotiated bundle price and beats the arithmetic.
-  //
-  // A proposal can be both at once — Asia sold item by item while London is
-  // on a tier — so the quote is the tier price plus the items, not one or
-  // the other.
-  const tierTotal = parsePrice(discounted ?? listPrice);
-  const quoted = menu.length
-    ? tierTotal === null && menuTotal === null
-      ? null
-      : formatPrice((tierTotal ?? 0) + (menuTotal ?? 0))
-    : input.totalOverride?.trim() || discounted || listPrice;
+  // What's billed: the authoritative per-event charges (netTotal) plus any à
+  // la carte items — unless the rep typed a negotiated grand total, which wins.
+  const combined =
+    netTotal === null && menuTotal === null ? null : (netTotal ?? 0) + (menuTotal ?? 0);
+  const overrideValue = parsePrice(input.totalOverride ?? '');
+  const quotedValue = overrideValue ?? combined;
+  const quoted = quotedValue === null ? null : formatPrice(quotedValue);
+
+  // A genuine reduction below the tier standard shows as a struck-through
+  // discount; the value shown is always the authoritative quote.
+  const discounted =
+    quotedValue !== null && listTotal !== null && quotedValue < listTotal ? quoted : null;
 
   return {
     company: input.company,

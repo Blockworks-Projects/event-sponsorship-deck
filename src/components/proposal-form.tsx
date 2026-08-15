@@ -240,23 +240,19 @@ export function ProposalForm({
   const [sponsorTier, setSponsorTier] = useState(existing?.tier ?? '');
   // Both-events proposals buy a tier at each, and they can differ.
   const [tiersByEvent, setTiersByEvent] = useState<Record<string, string>>(existing?.tiers ?? {});
-  // Standard pricing is the norm; custom is the exception, so it's the one
-  // behind a toggle. Reopening a proposal that was priced custom starts on
-  // custom, or the rep would have to set it again to change one number.
-  const [pricingMode, setPricingMode] = useState<'standard' | 'custom'>(
-    existing?.price_lines?.some((line) => line.discount) ||
-      existing?.discount_amount ||
-      existing?.discount_percent
-      ? 'custom'
-      : 'standard'
-  );
-  /** What's actually being charged per event, keyed by event. */
-  const [eventPrices, setEventPrices] = useState<Record<string, string>>(
-    Object.fromEntries(
-      (existing?.price_lines ?? [])
-        .filter((line) => line.net)
-        .map((line) => [line.event, String(parsePrice(line.net) ?? '')])
-    )
+  // ---- Checkout state. Pricing lives in a modal opened from the Sponsor step.
+  const [showCheckout, setShowCheckout] = useState(false);
+  /** The package-cost line per event, overriding the tier price. Left empty so
+   *  it defaults to the tier price; on edit the rep re-itemises if they change
+   *  picks, and the saved grand-total override (below) preserves the headline. */
+  const [packagePrice, setPackagePrice] = useState<Record<string, string>>({});
+  /** Cost typed for a benefit added on the Add-ons step, keyed "event|label". */
+  const [benefitCost, setBenefitCost] = useState<Record<string, string>>({});
+  /** Cost for extra passes on a package city, keyed "event|ga" / "event|vip". */
+  const [extraTicketCost, setExtraTicketCost] = useState<Record<string, string>>({});
+  /** A negotiated grand total the rep can type to override the summed lines. */
+  const [grandTotalOverride, setGrandTotalOverride] = useState(
+    existing?.total_override ?? ''
   );
 
 
@@ -459,16 +455,6 @@ export function ProposalForm({
     // "No branding activations included" rather than silently disappearing.
   }, [activations, eventFilter, tierFilter, tiersByEvent, menuSel]);
 
-  // Tier options and the standard price both come from the selected event's
-  // tier table in the content deck, so they track whatever it currently says.
-  const tierTable = modules.find(
-    (m) => m.category === 'tier-table' && (m.region || '').toLowerCase() === event.toLowerCase()
-  );
-  const availableTiers = tierTable
-    ? Object.keys(tierTable.pricing)
-        .sort((a, b) => tierRank(a) - tierRank(b))
-        .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-    : [];
   const bothEvents = event === 'both';
   const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
 
@@ -527,63 +513,49 @@ export function ProposalForm({
     const marked = includedActivation[eventKey];
     return marked && picked.some((m) => m.id === marked) ? marked : picked[0]?.id;
   };
-  /** The charged extra activations on a package city (everything but the one it
-   *  includes), each at its catalogue price. Empty for an à la carte city. */
-  const extrasForEvent = (eventKey: string) => {
+  /** The charged extra activations on a package city — everything but the one
+   *  it includes. Empty for an à la carte city. */
+  const extraActivationsForEvent = (eventKey: string): SponsorshipModule[] => {
     if (onMenuFor(eventKey) || !tierForEventNow(eventKey)) return [];
     const included = includedActivationFor(eventKey);
-    return pickedActivationsForEvent(eventKey)
-      .filter((m) => m.id !== included)
-      .map((m) => ({ moduleId: m.id, label: m.title, price: catalogPriceForModule(eventKey, m) }));
+    return pickedActivationsForEvent(eventKey).filter((m) => m.id !== included);
   };
+  /** An extra activation's price: the rep's override (keyed "event|moduleId"),
+   *  or the catalogue default. */
+  const extraActivationPrice = (eventKey: string, m: SponsorshipModule) =>
+    menuPrices[menuKey(eventKey, m.id)] ?? String(catalogPriceForModule(eventKey, m));
   const extrasTotalForEvent = (eventKey: string) =>
-    extrasForEvent(eventKey).reduce((sum, x) => sum + x.price, 0);
-  /** The package price plus its charged extras, as a number. */
-  const packagePriceValue = (eventKey: string, tier: string): number | null => {
-    const base = parsePrice(priceFor(eventKey, tier));
-    const extras = extrasTotalForEvent(eventKey);
-    if (base === null) return extras > 0 ? extras : null;
-    return base + extras;
+    extraActivationsForEvent(eventKey).reduce(
+      (sum, m) => sum + (parsePrice(extraActivationPrice(eventKey, m)) ?? 0),
+      0
+    );
+  // ---- Checkout line helpers. Every chargeable thing becomes a line: the
+  // package, its extra activations, benefits added on the Add-ons step, extra
+  // passes, and à la carte items. Each event's lines sum to its charge, and the
+  // charges sum to the grand total (which the rep can override).
+
+  /** Benefits added on the Add-ons step for one event (each chargeable). */
+  const addedBenefitsForEvent = (eventKey: string) => overrides[eventKey]?.added ?? [];
+  const benefitTotalForEvent = (eventKey: string) =>
+    addedBenefitsForEvent(eventKey).reduce(
+      (sum, label) => sum + (parsePrice(benefitCost[menuKey(eventKey, label)] ?? '') ?? 0),
+      0
+    );
+  /** Cost of extra passes added to a package city. */
+  const ticketTotalForEvent = (eventKey: string) =>
+    ['ga', 'vip'].reduce(
+      (sum, k) => sum + (parsePrice(extraTicketCost[menuKey(eventKey, k)] ?? '') ?? 0),
+      0
+    );
+  /** The tier's standard price as a plain string, for the package-line default. */
+  const defaultPackagePrice = (eventKey: string) => {
+    const tier = tierForEventNow(eventKey);
+    const value = tier ? parsePrice(priceFor(eventKey, tier)) : null;
+    return value === null ? '' : String(value);
   };
-
-  // One line per event being bought (package + any extra activations), and their sum.
-  const priceLines = bothEvents
-    ? EVENTS.map((e) => {
-        const tier = tiersByEvent[e.key] ?? '';
-        const value = tier ? packagePriceValue(e.key, tier) : null;
-        return { ...e, tier, price: value === null ? null : formatPrice(value) };
-      }).filter((line) => line.tier)
-    : [];
-  const summed = priceLines.reduce<number | null>((sum, line) => {
-    const value = parsePrice(line.price);
-    return value === null ? sum : (sum ?? 0) + value;
-  }, null);
-
-  const listPrice = bothEvents
-    ? summed === null ? null : formatPrice(summed)
-    : sponsorTier
-    ? (() => {
-        const value = packagePriceValue(event, sponsorTier);
-        return value === null ? null : formatPrice(value);
-      })()
-    : null;
-
-  /**
-   * One line per event being bought — both cities on a multi-event proposal,
-   * the single city otherwise — so custom pricing works the same either way.
-   */
-  const chargeLines = bothEvents
-    ? priceLines.map((line) => ({ key: line.key, label: line.label, tier: line.tier, list: line.price }))
-    : event && sponsorTier
-    ? [{ key: event, label: ALL_EVENTS.find((e) => e.key === event)?.label ?? event, tier: sponsorTier, list: listPrice }]
-    : [];
-
-  /** What each event is actually being charged, honouring custom pricing. */
-  const chargedFor = (line: { key: string; list: string | null }) => {
-    if (pricingMode !== 'custom') return parsePrice(line.list);
-    const typed = parsePrice(eventPrices[line.key] ?? '');
-    return typed ?? parsePrice(line.list);
-  };
+  /** The package line's effective price: the rep's override, or the tier default. */
+  const packageBaseValue = (eventKey: string) =>
+    parsePrice(packagePrice[eventKey] ?? defaultPackagePrice(eventKey));
 
   /** One à la carte city's item total, at the effective (defaulted) prices. */
   const menuTotalForEvent = (eventKey: string) =>
@@ -594,34 +566,24 @@ export function ProposalForm({
         return value === null ? sum : (sum ?? 0) + value;
       }, null);
 
-  /** The à la carte items' total across every city, for the summary and quote. */
-  const menuTotal = onMenu
-    ? menuScope.reduce<number | null>((sum, eventKey) => {
-        const value = menuTotalForEvent(eventKey);
-        return value === null ? sum : (sum ?? 0) + value;
-      }, null)
-    : null;
+  /** The final charge for one city: à la carte items, or package + add-ons. */
+  const eventChargeValue = (eventKey: string): number | null => {
+    if (onMenuFor(eventKey)) return menuTotalForEvent(eventKey);
+    if (!tierForEventNow(eventKey)) return null;
+    return (
+      (packageBaseValue(eventKey) ?? 0) +
+      extrasTotalForEvent(eventKey) +
+      benefitTotalForEvent(eventKey) +
+      ticketTotalForEvent(eventKey)
+    );
+  };
 
-  const chargedTotal = chargeLines.reduce<number | null>((sum, line) => {
-    const value = chargedFor(line);
+  /** The summed lines, and the effective (overridable) grand total. */
+  const grandTotalValue = scopedEvents.reduce<number | null>((sum, key) => {
+    const value = eventChargeValue(key);
     return value === null ? sum : (sum ?? 0) + value;
   }, null);
-
-  const listTotalValue = parsePrice(listPrice);
-  /** Everything being sold: the tier prices plus the à la carte items. */
-  const combinedTotal =
-    listTotalValue === null && menuTotal === null
-      ? null
-      : formatPrice((listTotalValue ?? 0) + (menuTotal ?? 0));
-  // Only a genuine reduction is a discount; typing the standard price back in
-  // shouldn't put a struck-through line on the sponsor's proposal.
-  const discountedPrice =
-    pricingMode === 'custom' &&
-    chargedTotal !== null &&
-    listTotalValue !== null &&
-    chargedTotal < listTotalValue
-      ? formatPrice(chargedTotal)
-      : null;
+  const effectiveGrandTotal = parsePrice(grandTotalOverride) ?? grandTotalValue;
 
   /**
    * Which stage a tier's speaking slot is on at a given event, read off that
@@ -736,12 +698,6 @@ export function ProposalForm({
   useEffect(() => {
     if (step === 3 && !contentOffered) setStep(4);
   }, [step, contentOffered]);
-
-  // Adding on or dropping benefits means the tier's list price no longer
-  // matches the package, so pricing switches to custom for the rep to set.
-  useEffect(() => {
-    if (hasOverrides) setPricingMode('custom');
-  }, [hasOverrides]);
 
   /**
    * Loads each event's agenda as soon as a session is wanted there, rather
@@ -864,14 +820,16 @@ export function ProposalForm({
           createdByName,
           tier: bothEvents ? undefined : sponsorTier || undefined,
           tiers: bothEvents ? tiersByEvent : undefined,
-          eventPrices: pricingMode === 'custom' ? eventPrices : undefined,
-          // Charged extra activations on a package city, summed per event, so
-          // the saved total is package price + extras.
-          activationExtras: scopedEvents.reduce<Record<string, number>>((acc, key) => {
-            const total = extrasTotalForEvent(key);
-            if (total > 0) acc[key] = total;
+          // The checkout's per-event total (package + extras + benefits +
+          // passes) is the authoritative charge for each tier city.
+          eventPrices: scopedEvents.reduce<Record<string, string>>((acc, key) => {
+            if (onMenuFor(key)) return acc;
+            const value = eventChargeValue(key);
+            if (value !== null) acc[key] = String(value);
             return acc;
           }, {}),
+          // A negotiated grand total the rep typed, overriding the summed lines.
+          totalOverride: grandTotalOverride.trim() || undefined,
           aLaCarte: onMenu ? menuLines : undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
@@ -1619,135 +1577,28 @@ export function ProposalForm({
                 </p>
               </Fieldset>
 
-              {bothEvents ? (
-                // A sponsor can buy different tiers at each city, so each gets
-                // its own picker, limited to the tiers that city actually sells.
-                EVENTS.map((e) => {
-                  const options = tiersForEvent(e.key).map(
-                    (t) => t.charAt(0).toUpperCase() + t.slice(1)
-                  );
-                  // Sold item by item, so there is no tier to choose here —
-                  // this is where its prices are set instead.
-                  if (onMenuFor(e.key)) {
-                    const picks = menuPicksForEvent(e.key);
-                    return (
-                      <Fieldset
-                        key={e.key}
-                        label={`${e.label} à la carte`}
-                        hint="Prices are pre-filled from the catalogue — override any."
-                        stackHint
-                      >
-                        {picks.length === 0 ? (
-                          <p className="text-sm text-neutral-500">
-                            No items picked yet. Choose them in step 2.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {menuItemsForEvent(e.key)
-                              .filter((item) => picks.includes(item.key))
-                              .map((item) => (
-                                <div key={item.key} className="flex items-center gap-3">
-                                  <span className="flex-1 text-sm text-neutral-300">
-                                    {item.label}
-                                  </span>
-                                  <Input
-                                    value={menuPrices[menuKey(e.key, item.key)] ?? String(item.price)}
-                                    onChange={(ev) =>
-                                      setMenuPrices((current) => ({
-                                        ...current,
-                                        [menuKey(e.key, item.key)]: ev.target.value,
-                                      }))
-                                    }
-                                    placeholder="Price"
-                                    inputMode="decimal"
-                                    className="w-40"
-                                  />
-                                </div>
-                              )
-                            )}
-                            {menuTotalForEvent(e.key) !== null && (
-                              <div className="flex items-center justify-between border-t border-neutral-800 pt-2 text-sm">
-                                <span className="text-neutral-400">Subtotal</span>
-                                <span className="font-semibold text-neutral-100">
-                                  {formatPrice(menuTotalForEvent(e.key) as number)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {menuTicketInputs(e.key)}
-                      </Fieldset>
-                    );
-                  }
-                  return (
-                    <Fieldset key={e.key} label={`${e.label} tier`}>
-                      {options.length ? (
-                        <p className="text-sm text-neutral-300">
-                          {tiersByEvent[e.key] || <span className="text-neutral-500">Not set</span>}
-                          <button
-                            type="button"
-                            onClick={() => setStep(0)}
-                            className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
-                          >
-                            change
-                          </button>
-                        </p>
-                      ) : (
-                        <p className="text-sm text-neutral-500">
-                          No tier pricing has synced for {e.label} yet.
-                        </p>
-                      )}
-                    </Fieldset>
-                  );
-                })
-              ) : onMenu ? (
+              {/* What each city is buying — chosen in the earlier steps and
+                  priced in the checkout popup. */}
+              {scopedEvents.map((key) => (
                 <Fieldset
-                  label="À la carte"
-                  hint="Prices are pre-filled from the catalogue — override any."
-                  stackHint
+                  key={`sel-${key}`}
+                  label={bothEvents ? (ALL_EVENTS.find((e) => e.key === key)?.label ?? key) : 'Selling'}
                 >
-                  {menuPicksForEvent(event).length === 0 ? (
-                    <p className="text-sm text-neutral-500">
-                      No items picked yet. Choose them in step 2.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {menuItemsForEvent(event)
-                        .filter((item) => menuPicks.includes(menuKey(event, item.key)))
-                        .map((item) => (
-                        <div key={item.key} className="flex items-center gap-3">
-                          <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
-                          <Input
-                            value={menuPrices[menuKey(event, item.key)] ?? String(item.price)}
-                            onChange={(e) =>
-                              setMenuPrices((current) => ({
-                                ...current,
-                                [menuKey(event, item.key)]: e.target.value,
-                              }))
-                            }
-                            placeholder="Price"
-                            inputMode="decimal"
-                            className="w-40"
-                          />
-                        </div>
-                      ))}
-                      {menuTotalForEvent(event) !== null && (
-                        <div className="flex items-center justify-between border-t border-neutral-800 pt-2 text-sm">
-                          <span className="text-neutral-400">Total</span>
-                          <span className="font-semibold text-neutral-100">
-                            {formatPrice(menuTotalForEvent(event) as number)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {menuTicketInputs(event)}
-                </Fieldset>
-              ) : (
-                <Fieldset label="Sponsorship tier">
-                  {availableTiers.length > 0 ? (
+                  {onMenuFor(key) ? (
                     <p className="text-sm text-neutral-300">
-                      {sponsorTier || <span className="text-neutral-500">Not set</span>}
+                      À la carte · {menuPicksForEvent(key).length} item
+                      {menuPicksForEvent(key).length === 1 ? '' : 's'}
+                      <button
+                        type="button"
+                        onClick={() => setStep(0)}
+                        className="ml-2 text-xs text-neutral-500 underline hover:text-neutral-300"
+                      >
+                        change
+                      </button>
+                    </p>
+                  ) : tierForEventNow(key) ? (
+                    <p className="text-sm text-neutral-300">
+                      {tierForEventNow(key)}
                       <button
                         type="button"
                         onClick={() => setStep(0)}
@@ -1757,185 +1608,31 @@ export function ProposalForm({
                       </button>
                     </p>
                   ) : (
-                    // An empty control looks broken. Say which of the two
-                    // reasons it is, since one is the rep's to fix and one isn't.
                     <p className="text-sm text-neutral-500">
-                      {!event
-                        ? 'Pick an event first.'
-                        : `No tier pricing has synced for ${event} yet. Run Sync from Google Slides.`}
+                      {!event ? 'Pick an event first.' : 'Not set — choose a tier or à la carte in step 1.'}
                     </p>
                   )}
                 </Fieldset>
-              )}
+              ))}
 
-              {/* A package covers one activation; the rep marks which, and the
-                  rest are charged at their à la carte price. Only shown when a
-                  package city has more than one activation picked. */}
-              {scopedEvents
-                .filter(
-                  (key) =>
-                    !onMenuFor(key) &&
-                    tierForEventNow(key) &&
-                    pickedActivationsForEvent(key).length > 1
-                )
-                .map((key) => {
-                  const picked = pickedActivationsForEvent(key);
-                  const included = includedActivationFor(key);
-                  const extrasTotal = extrasTotalForEvent(key);
-                  return (
-                    <Fieldset
-                      key={`incl-${key}`}
-                      label={
-                        bothEvents
-                          ? `${ALL_EVENTS.find((e) => e.key === key)?.label ?? key} — included activation`
-                          : 'Included activation'
-                      }
-                      hint="The package covers one activation; the rest are added at their à la carte price."
-                      stackHint
-                    >
-                      <div className="space-y-2">
-                        {picked.map((m) => {
-                          const isIncluded = m.id === included;
-                          const price = catalogPriceForModule(key, m);
-                          return (
-                            <label key={m.id} className="flex items-center gap-3 text-sm">
-                              <input
-                                type="radio"
-                                name={`included-${key}`}
-                                checked={isIncluded}
-                                onChange={() =>
-                                  setIncludedActivation((current) => ({ ...current, [key]: m.id }))
-                                }
-                              />
-                              <span className="flex-1 text-neutral-300">{m.title}</span>
-                              <span className={isIncluded ? 'text-neutral-500' : 'text-neutral-100'}>
-                                {isIncluded
-                                  ? 'Included'
-                                  : price > 0
-                                  ? `+ ${formatPrice(price)}`
-                                  : 'No price set'}
-                              </span>
-                            </label>
-                          );
-                        })}
-                        {extrasTotal > 0 && (
-                          <div className="flex justify-between border-t border-neutral-800 pt-2 text-sm">
-                            <span className="text-neutral-400">Extra activations</span>
-                            <span className="font-semibold text-neutral-100">
-                              + {formatPrice(extrasTotal)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </Fieldset>
-                  );
-                })}
-
-              {chargeLines.length > 0 && (
-              <Fieldset label="Pricing">
-                {hasOverrides ? (
-                  // Add-ons change what the package is, so the tier's list price
-                  // no longer fits — pricing is locked to custom with a nudge to
-                  // set it below.
-                  <p className="text-sm text-neutral-400">
-                    Additional items have been added or removed, so this package is
-                    priced custom, please set the price for it below.
-                  </p>
-                ) : (
-                  <div className="flex gap-2">
-                    {(['standard', 'custom'] as const).map((mode) => (
-                      <Choice
-                        key={mode}
-                        selected={pricingMode === mode}
-                        // Deliberately no prefill: an empty box lets the
-                        // placeholder show the standard price, and a blank field
-                        // already means "charge the standard price".
-                        onClick={() => setPricingMode(mode)}
-                      >
-                        {mode === 'standard' ? 'Standard pricing' : 'Custom pricing'}
-                      </Choice>
-                    ))}
-                  </div>
-                )}
-              </Fieldset>
-
-              )}
-
-              {pricingMode === 'custom' && chargeLines.length > 0 && (
-                <Fieldset label="Update the cost">
-                  <div className="space-y-2">
-                    {chargeLines.map((line) => (
-                      <div key={line.key} className="flex items-center gap-3">
-                        <span className="w-40 shrink-0 text-sm text-neutral-400">
-                          {line.label} · {line.tier}
-                        </span>
-                        {/* The standard price as placeholder: it shows what
-                            they'd charge if they left it alone, and vanishes
-                            the moment they type. Written out in full — the
-                            tier tables say "$125K", but a field you're about
-                            to type a real figure into should read $125,000. */}
-                        <Input
-                          value={eventPrices[line.key] ?? ''}
-                          onChange={(e) =>
-                            setEventPrices((current) => ({ ...current, [line.key]: e.target.value }))
-                          }
-                          placeholder={
-                            parsePrice(line.list) !== null
-                              ? formatPrice(parsePrice(line.list) as number)
-                              : ''
-                          }
-                          inputMode="decimal"
-                          className="flex-1"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </Fieldset>
-              )}
-
-              {(listPrice || menuTotal !== null) && (
-                <div className="mb-6 bg-neutral-800 px-3 py-2 text-sm">
-                  {priceLines.map((line) => (
-                    <div key={line.key} className="flex justify-between text-neutral-400">
-                      <span>{line.label} · {line.tier}</span>
-                      <span>{line.price ?? '—'}</span>
-                    </div>
-                  ))}
-                  {/* One line per à la carte city, so a mixed proposal's total
-                      is obviously the sum of any tiers and each basket rather
-                      than appearing to ignore half of what's being sold. */}
-                  {menuScope.map((eventKey) => {
-                    const subtotal = menuTotalForEvent(eventKey);
-                    if (subtotal === null) return null;
-                    return (
-                      <div key={eventKey} className="flex justify-between text-neutral-400">
-                        <span>
-                          {ALL_EVENTS.find((e) => e.key === eventKey)?.label ?? eventKey} · À la carte
-                        </span>
-                        <span>{formatPrice(subtotal)}</span>
-                      </div>
-                    );
-                  })}
-                  <div
-                    className={`flex justify-between ${
-                      priceLines.length || menuTotal !== null
-                        ? 'mt-1 border-t border-neutral-700 pt-1'
-                        : ''
-                    } text-neutral-400`}
-                  >
-                    <span>{priceLines.length || menuTotal !== null ? 'Combined' : 'Standard'}</span>
-                    <span className={discountedPrice ? 'line-through' : undefined}>
-                      {combinedTotal}
+              {/* All pricing lives in the checkout popup — the package, its
+                  extra activations, added benefits, extra passes and any à la
+                  carte items, each overridable, summing to the total. */}
+              <Fieldset label="Pricing" hint="Set every line and the total in the checkout.">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="secondary" onClick={() => setShowCheckout(true)}>
+                    Review &amp; checkout
+                  </Button>
+                  {effectiveGrandTotal !== null && (
+                    <span className="text-sm text-neutral-400">
+                      Total{' '}
+                      <span className="font-semibold text-neutral-100">
+                        {formatPrice(effectiveGrandTotal)}
+                      </span>
                     </span>
-                  </div>
-                  {discountedPrice && (
-                    <div className="mt-1 flex justify-between font-semibold text-white">
-                      <span>Custom pricing</span>
-                      <span>{discountedPrice}</span>
-                    </div>
                   )}
                 </div>
-              )}
+              </Fieldset>
 
 
               {/* Asia's tiers have no kiosk, so the question only makes
@@ -1993,11 +1690,196 @@ export function ProposalForm({
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : addOnOffered ? 2 : 1)}>Back</Button>
-            <Button disabled={submitting} onClick={generate}>
-              {submitting ? 'Saving…' : editing ? 'Save changes' : 'Generate proposal'}
-            </Button>
+            <Button onClick={() => setShowCheckout(true)}>Review &amp; checkout</Button>
           </div>
         </StepPanel>
+      )}
+
+      {showCheckout && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
+          onClick={() => setShowCheckout(false)}
+        >
+          <div
+            className="my-8 w-full max-w-2xl border border-neutral-800 bg-neutral-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-neutral-100">Checkout</h3>
+              <button
+                type="button"
+                onClick={() => setShowCheckout(false)}
+                className="text-neutral-400 hover:text-neutral-200"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {scopedEvents.map((key) => {
+              const isMenu = onMenuFor(key);
+              const tier = tierForEventNow(key);
+              if (!isMenu && !tier) return null;
+              const picked = pickedActivationsForEvent(key);
+              const charge = eventChargeValue(key);
+              return (
+                <div key={`co-${key}`} className="mb-5">
+                  {bothEvents && (
+                    <div className="bx-flabel" style={{ marginBottom: 8 }}>
+                      {ALL_EVENTS.find((e) => e.key === key)?.label ?? key}
+                    </div>
+                  )}
+
+                  {isMenu ? (
+                    <div className="space-y-2">
+                      {menuItemsForEvent(key)
+                        .filter((item) => menuPicks.includes(menuKey(key, item.key)))
+                        .map((item) => (
+                          <div key={item.key} className="flex items-center gap-3">
+                            <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
+                            <Input
+                              value={menuPrices[menuKey(key, item.key)] ?? String(item.price)}
+                              onChange={(ev) =>
+                                setMenuPrices((c) => ({ ...c, [menuKey(key, item.key)]: ev.target.value }))
+                              }
+                              inputMode="decimal"
+                              className="w-40"
+                            />
+                          </div>
+                        ))}
+                      {menuTicketInputs(key)}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="flex-1 text-sm text-neutral-300">{tier} package</span>
+                        <Input
+                          value={packagePrice[key] ?? defaultPackagePrice(key)}
+                          onChange={(ev) =>
+                            setPackagePrice((c) => ({ ...c, [key]: ev.target.value }))
+                          }
+                          inputMode="decimal"
+                          className="w-40"
+                        />
+                      </div>
+
+                      {picked.length > 1 && (
+                        <div className="space-y-2 pt-1">
+                          <div className="text-xs uppercase tracking-wider text-neutral-500">
+                            Activations — one included, the rest charged
+                          </div>
+                          {picked.map((m) => {
+                            const isIncluded = m.id === includedActivationFor(key);
+                            return (
+                              <div key={m.id} className="flex items-center gap-3 text-sm">
+                                <input
+                                  type="radio"
+                                  name={`co-incl-${key}`}
+                                  checked={isIncluded}
+                                  onChange={() =>
+                                    setIncludedActivation((c) => ({ ...c, [key]: m.id }))
+                                  }
+                                />
+                                <span className="flex-1 text-neutral-300">{m.title}</span>
+                                {isIncluded ? (
+                                  <span className="w-40 text-right text-neutral-500">Included</span>
+                                ) : (
+                                  <Input
+                                    value={extraActivationPrice(key, m)}
+                                    onChange={(ev) =>
+                                      setMenuPrices((c) => ({ ...c, [menuKey(key, m.id)]: ev.target.value }))
+                                    }
+                                    inputMode="decimal"
+                                    className="w-40"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {addedBenefitsForEvent(key).map((label) => (
+                        <div key={label} className="flex items-center gap-3">
+                          <span className="flex-1 text-sm text-neutral-300">{label}</span>
+                          <Input
+                            value={benefitCost[menuKey(key, label)] ?? ''}
+                            onChange={(ev) =>
+                              setBenefitCost((c) => ({ ...c, [menuKey(key, label)]: ev.target.value }))
+                            }
+                            placeholder="0"
+                            inputMode="decimal"
+                            className="w-40"
+                          />
+                        </div>
+                      ))}
+
+                      {[
+                        { k: 'ga', label: 'Extra General Admission passes' },
+                        { k: 'vip', label: 'Extra VIP passes' },
+                      ].map(({ k, label }) => (
+                        <div key={k} className="flex items-center gap-3">
+                          <span className="flex-1 text-sm text-neutral-300">{label}</span>
+                          <Input
+                            value={extraTicketCost[menuKey(key, k)] ?? ''}
+                            onChange={(ev) =>
+                              setExtraTicketCost((c) => ({ ...c, [menuKey(key, k)]: ev.target.value }))
+                            }
+                            placeholder="0"
+                            inputMode="decimal"
+                            className="w-40"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {charge !== null && (
+                    <div className="mt-2 flex justify-between border-t border-neutral-800 pt-2 text-sm">
+                      <span className="text-neutral-400">Subtotal</span>
+                      <span className="font-semibold text-neutral-100">{formatPrice(charge)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="mt-4 border-t border-neutral-700 pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-neutral-400">
+                  Total override
+                  {grandTotalValue !== null && (
+                    <span className="ml-1 text-neutral-500">(auto {formatPrice(grandTotalValue)})</span>
+                  )}
+                </span>
+                <Input
+                  value={grandTotalOverride}
+                  onChange={(ev) => setGrandTotalOverride(ev.target.value)}
+                  placeholder={grandTotalValue !== null ? String(grandTotalValue) : 'Total'}
+                  inputMode="decimal"
+                  className="w-40"
+                />
+              </div>
+              {effectiveGrandTotal !== null && (
+                <div className="mt-3 flex justify-between text-base font-semibold text-white">
+                  <span>Grand total</span>
+                  <span>{formatPrice(effectiveGrandTotal)}</span>
+                </div>
+              )}
+            </div>
+
+            {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+            <div className="mt-5 flex gap-3">
+              <Button variant="secondary" onClick={() => setShowCheckout(false)}>
+                Back
+              </Button>
+              <Button disabled={submitting} onClick={generate}>
+                {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create proposal'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
