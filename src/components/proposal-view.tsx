@@ -616,6 +616,13 @@ export function ProposalView({
         <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: accent }}>
           Your Partnership
         </h2>
+        {/* More than one option on a package: the sponsor picks one to include
+            with the tier. Sits right under the heading. */}
+        {!bothEvents && !onMenu && activations.length > 1 && (
+          <p className="mt-3 text-sm font-semibold" style={{ color: accent }}>
+            Please select one activation to be included in your {proposal.tier ?? ''} package.
+          </p>
+        )}
         {/* Across two cities the activations are grouped under each, which
             says which is which once per group rather than tagging every
             single card. */}
@@ -631,6 +638,14 @@ export function ProposalView({
                 >
                   {key === 'nyc' ? 'new york' : key}
                 </h3>
+                {/* More than one option on a package: the sponsor picks one to
+                    include with the tier. */}
+                {!menuEvents.has(key) && items.length > 1 && (
+                  <p className="mt-2 text-sm font-semibold" style={{ color: EVENT_ACCENT[key] ?? accent }}>
+                    Please select one activation to be included in your{' '}
+                    {proposal.tiers?.[key] ?? ''} package.
+                  </p>
+                )}
                 <div className="pdf-two-up mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {items.map((m) => (
                     <div key={`${key}-${m.id}`} className="pdf-block h-full">
@@ -638,15 +653,6 @@ export function ProposalView({
                     </div>
                   ))}
                 </div>
-
-                {/* More than one option on a package: the sponsor picks one to
-                    include with the tier. */}
-                {!menuEvents.has(key) && items.length > 1 && (
-                  <p className="mt-3 text-sm font-semibold" style={{ color: EVENT_ACCENT[key] ?? accent }}>
-                    Please select one activation to be included in your{' '}
-                    {proposal.tiers?.[key] ?? ''} package.
-                  </p>
-                )}
 
                 {/* That city's session sits with its activations, so each city
                     reads as one block rather than the sessions all landing
@@ -666,23 +672,13 @@ export function ProposalView({
           })
         ) : (
           activations.length > 0 && (
-            <>
-              <div className="pdf-two-up mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                {activations.map((m) => (
-                  <div key={m.id} className="pdf-block h-full">
-                    <ModuleCard module={m} />
-                  </div>
-                ))}
-              </div>
-              {/* More than one option on a package: the sponsor picks one to
-                  include with the tier. */}
-              {!onMenu && activations.length > 1 && (
-                <p className="mt-3 text-sm font-semibold" style={{ color: accent }}>
-                  Please select one activation to be included in your{' '}
-                  {proposal.tier ?? ''} package.
-                </p>
-              )}
-            </>
+            <div className="pdf-two-up mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              {activations.map((m) => (
+                <div key={m.id} className="pdf-block h-full">
+                  <ModuleCard module={m} />
+                </div>
+              ))}
+            </div>
           )
         )}
       </section>

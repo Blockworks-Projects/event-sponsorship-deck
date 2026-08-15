@@ -7,6 +7,7 @@ import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { parsePrice } from '@/lib/pricing';
+import { DeleteProposalButton } from '@/components/delete-proposal-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,28 +171,31 @@ export default async function BuilderHomePage({
               ? p.event
               : '';
             return (
-              <Link key={p.slug} href={`/builder/proposal/${p.slug}`} className="bx-prow">
-                <div className="bx-co">
-                  <span className="logo">{(p.company ?? '?').charAt(0).toUpperCase()}</span>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="cn">{p.company}</div>
-                    <div className="cs">{p.created_by_name ?? p.created_by ?? '—'}</div>
+              <div key={p.slug} style={{ position: 'relative' }}>
+                <Link href={`/builder/proposal/${p.slug}`} className="bx-prow">
+                  <div className="bx-co">
+                    <span className="logo">{(p.company ?? '?').charAt(0).toUpperCase()}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="cn">{p.company}</div>
+                      <div className="cs">{p.created_by_name ?? p.created_by ?? '—'}</div>
+                    </div>
                   </div>
-                </div>
-                <span>
-                  <span className={`bx-ev ${evClass}`}>
-                    {EVENT_LABEL[p.event ?? ''] ?? p.event ?? '—'}
+                  <span>
+                    <span className={`bx-ev ${evClass}`}>
+                      {EVENT_LABEL[p.event ?? ''] ?? p.event ?? '—'}
+                    </span>
                   </span>
-                </span>
-                <span className="bx-tier col-hide">{tierText(p)}</span>
-                <span className="num money">{p.total_price ?? '—'}</span>
-                <span className="num col-hide">
-                  <span className={`bx-opened${views ? '' : ' none'}`}>
-                    {views ? `${views.count}×` : '—'}
+                  <span className="bx-tier col-hide">{tierText(p)}</span>
+                  <span className="num money">{p.total_price ?? '—'}</span>
+                  <span className="num col-hide">
+                    <span className={`bx-opened${views ? '' : ' none'}`}>
+                      {views ? `${views.count}×` : '—'}
+                    </span>
                   </span>
-                </span>
-                <span className="num bx-ago col-hide">{ago(p.updated_at)}</span>
-              </Link>
+                  <span className="num bx-ago col-hide">{ago(p.updated_at)}</span>
+                </Link>
+                <DeleteProposalButton slug={p.slug} company={p.company ?? 'this sponsor'} />
+              </div>
             );
           })}
         </div>

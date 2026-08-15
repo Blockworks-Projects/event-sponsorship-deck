@@ -195,34 +195,19 @@ export function PriceBreakdown({
                   </div>
                 ))}
 
-              {/* What the bundle includes — listed as bullets, no separate
-                  charge (passes show their count). */}
-              {(() => {
-                const bundled = menu.filter(
-                  (item) => item.key !== 'ala-package' && (item.qty != null || !item.price)
-                );
-                if (!bundled.length) return null;
-                return (
-                  <div className="py-3">
-                    <ul className="space-y-1.5">
-                      {bundled.map((item) => (
-                        <li
-                          key={`${item.event}|${item.key}`}
-                          className="flex justify-between gap-6 text-sm text-neutral-600"
-                        >
-                          <span className="flex gap-2">
-                            <span aria-hidden style={{ color: accent }}>•</span>
-                            {EVENT_LABEL[item.event] ?? item.event} · {item.label}
-                          </span>
-                          {item.qty != null && (
-                            <span>{item.qty} {item.qty === 1 ? 'pass' : 'passes'}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })()}
+              {/* What the bundle includes — the same expandable rows the tier
+                  list uses, so each carries its explanation. Passes show their
+                  count; everything else reads "Included". */}
+              {menu
+                .filter((item) => item.key !== 'ala-package' && (item.qty != null || !item.price))
+                .map((item) => (
+                  <BenefitRow
+                    key={`${item.event}|${item.key}`}
+                    label={item.label}
+                    value={item.qty != null ? `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}` : 'Included'}
+                    accent={accent}
+                  />
+                ))}
 
               {/* Priced add-ons — activations and speaking, each adding on. */}
               {menu

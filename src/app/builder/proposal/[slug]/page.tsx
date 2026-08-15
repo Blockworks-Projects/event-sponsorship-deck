@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { headers } from 'next/headers';
 import { CopyLink } from '@/components/copy-link';
 import { notFound } from 'next/navigation';
@@ -84,9 +83,6 @@ export default async function BuilderProposalPage({
           >
             Save as PDF
           </a>
-          <Link href={`/builder/proposal/${proposal.slug}/edit`} className="bx-btn bx-btn-primary">
-            Edit proposal
-          </Link>
         </div>
       </div>
 
