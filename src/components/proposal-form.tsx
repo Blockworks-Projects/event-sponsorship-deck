@@ -251,10 +251,6 @@ export function ProposalForm({
    *  it defaults to the tier price; on edit the rep re-itemises if they change
    *  picks, and the saved grand-total override (below) preserves the headline. */
   const [packagePrice, setPackagePrice] = useState<Record<string, string>>({});
-  /** Cost typed for a benefit added on the Add-ons step, keyed "event|label". */
-  const [benefitCost, setBenefitCost] = useState<Record<string, string>>({});
-  /** Cost for extra passes on a package city, keyed "event|ga" / "event|vip". */
-  const [extraTicketCost, setExtraTicketCost] = useState<Record<string, string>>({});
   /** A negotiated grand total the rep can type to override the summed lines. */
   const [grandTotalOverride, setGrandTotalOverride] = useState(
     existing?.total_override ?? ''
@@ -340,16 +336,6 @@ export function ProposalForm({
       pool.find((m) => normalizeTitle(m.title).startsWith(want)) ??
       undefined
     );
-  };
-
-  // The catalogue price for a picked activation module, matched back by title.
-  // Unmatched (a synced activation not on the price list) counts as no charge.
-  const catalogPriceForModule = (eventKey: string, module: SponsorshipModule): number => {
-    const want = normalizeTitle(module.title);
-    const item = catalogFor(eventKey).find(
-      (c) => normalizeTitle(c.label) === want || want.startsWith(normalizeTitle(c.label))
-    );
-    return item?.price ?? 0;
   };
 
   /**
@@ -475,40 +461,18 @@ export function ProposalForm({
     if (marked && picked.some((m) => m.id === marked)) return marked;
     return picked[0]?.id;
   };
-  /** The charged extra activations on a package city — everything but the one
-   *  it includes. Empty for an à la carte city. */
-  const extraActivationsForEvent = (eventKey: string): SponsorshipModule[] => {
+  /** The other activation options on a package city — everything but the one
+   *  it includes. These are free choices for the sponsor (the package covers
+   *  one), so they carry no charge. Empty for an à la carte city. */
+  const otherOfferingsForEvent = (eventKey: string): SponsorshipModule[] => {
     if (onMenuFor(eventKey) || !tierForEventNow(eventKey)) return [];
     const included = includedActivationFor(eventKey);
     return pickedActivationsForEvent(eventKey).filter((m) => m.id !== included);
   };
-  /** An extra activation's price: the rep's override (keyed "event|moduleId"),
-   *  or the catalogue default. */
-  const extraActivationPrice = (eventKey: string, m: SponsorshipModule) =>
-    menuPrices[menuKey(eventKey, m.id)] ?? String(catalogPriceForModule(eventKey, m));
-  const extrasTotalForEvent = (eventKey: string) =>
-    extraActivationsForEvent(eventKey).reduce(
-      (sum, m) => sum + (parsePrice(extraActivationPrice(eventKey, m)) ?? 0),
-      0
-    );
-  // ---- Checkout line helpers. Every chargeable thing becomes a line: the
-  // package, its extra activations, benefits added on the Add-ons step, extra
-  // passes, and à la carte items. Each event's lines sum to its charge, and the
-  // charges sum to the grand total (which the rep can override).
+  // ---- Checkout line helpers. A package's charge is its tier price plus any
+  // benefits added on the Add-ons step and extra passes — activations are free
+  // options. À la carte charges each item. Charges sum to the grand total.
 
-  /** Benefits added on the Add-ons step for one event (each chargeable). */
-  const addedBenefitsForEvent = (eventKey: string) => overrides[eventKey]?.added ?? [];
-  const benefitTotalForEvent = (eventKey: string) =>
-    addedBenefitsForEvent(eventKey).reduce(
-      (sum, label) => sum + (parsePrice(benefitCost[menuKey(eventKey, label)] ?? '') ?? 0),
-      0
-    );
-  /** Cost of extra passes added to a package city. */
-  const ticketTotalForEvent = (eventKey: string) =>
-    ['ga', 'vip'].reduce(
-      (sum, k) => sum + (parsePrice(extraTicketCost[menuKey(eventKey, k)] ?? '') ?? 0),
-      0
-    );
   /** The tier's standard price as a plain string, for the package-line default. */
   const defaultPackagePrice = (eventKey: string) => {
     const tier = tierForEventNow(eventKey);
@@ -528,16 +492,13 @@ export function ProposalForm({
         return value === null ? sum : (sum ?? 0) + value;
       }, null);
 
-  /** The final charge for one city: à la carte items, or package + add-ons. */
+  /** The charge for one city: the à la carte items' total, or simply the
+   *  package price (activations and inclusions are free — a package is one
+   *  price). */
   const eventChargeValue = (eventKey: string): number | null => {
     if (onMenuFor(eventKey)) return menuTotalForEvent(eventKey);
     if (!tierForEventNow(eventKey)) return null;
-    return (
-      (packageBaseValue(eventKey) ?? 0) +
-      extrasTotalForEvent(eventKey) +
-      benefitTotalForEvent(eventKey) +
-      ticketTotalForEvent(eventKey)
-    );
+    return packageBaseValue(eventKey);
   };
 
   /** The summed lines, and the effective (overridable) grand total. */
@@ -846,7 +807,8 @@ export function ProposalForm({
     <div>
       <ol className="bx-steps-top">
         {STEPS.map((name, i) => {
-          if ((i === 2 && !addOnOffered) || (i === 3 && !contentOffered)) return null;
+          // Add-ons (2) is retired — a package is one price with free options.
+          if (i === 2 || (i === 3 && !contentOffered)) return null;
           // Steps are navigable, not locked: changing the scope after picking
           // shouldn't mean starting again. Anything before the current step
           // reads as done.
@@ -1059,20 +1021,15 @@ export function ProposalForm({
             </div>
           ))}
 
-          {/* Tier cities: pick the one activation the package includes from a
-              dropdown, then add any other offerings — each charged separately. */}
+          {/* Tier cities: a grid of activation options. One comes with the
+              package; the rest are free choices for the sponsor to pick from. */}
           {scopedEvents
             .filter((key) => !onMenuFor(key) && tierForEventNow(key))
             .map((key) => {
               const all = activationsForEvent(key);
-              const includedVal =
-                includedActivation[key] === NONE_INCLUDED
-                  ? NONE_INCLUDED
-                  : includedActivationFor(key) ?? '';
-              const offerings = pickedActivationsForEvent(key).filter(
-                (m) => m.id !== includedActivationFor(key)
-              );
-              const addable = all.filter((m) => !cart.includes(cartKey(key, m.id)));
+              const included = includedActivationFor(key);
+              const noneIncluded = includedActivation[key] === NONE_INCLUDED;
+              const picked = pickedActivationsForEvent(key);
               return (
                 <div key={`act-${key}`} style={{ marginBottom: 28 }}>
                   <div className="bx-subhead">
@@ -1082,6 +1039,10 @@ export function ProposalForm({
                     </span>
                     <span className="rule" />
                   </div>
+                  <p className="bx-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+                    One activation comes with the package. Tick any options to show the sponsor —
+                    they choose one. Options don&apos;t add to the price.
+                  </p>
 
                   {all.length === 0 ? (
                     <p className="bx-hint" style={{ marginTop: 0 }}>
@@ -1089,69 +1050,76 @@ export function ProposalForm({
                     </p>
                   ) : (
                     <>
-                      <Fieldset label="Included activation" hint="One activation comes with the package.">
-                        <select
-                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-                          value={includedVal}
-                          onChange={(e) => {
-                            const id = e.target.value;
-                            if (id === NONE_INCLUDED) {
-                              setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }));
-                            } else if (id) {
-                              setIncludedActivation((c) => ({ ...c, [key]: id }));
-                              setCart((c) => [...new Set([...c, cartKey(key, id)])]);
-                            }
-                          }}
-                        >
-                          <option value="">Select an activation…</option>
-                          {all.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.title}
-                            </option>
-                          ))}
-                          <option value={NONE_INCLUDED}>None — charge every activation</option>
-                        </select>
-                      </Fieldset>
+                      <div className="bx-cards">
+                        {all.map((m) => {
+                          const on = cart.includes(cartKey(key, m.id));
+                          return (
+                            <button
+                              type="button"
+                              key={m.id}
+                              onClick={() => toggle(cart, cartKey(key, m.id), setCart)}
+                              className={`bx-selcard${on ? ' sel' : ''}`}
+                            >
+                              <span className="bx-cbox">
+                                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
+                                  <path d="M5 12l5 5L19 6" />
+                                </svg>
+                              </span>
+                              <span>
+                                <span className="at">{m.title}</span>
+                                {m.description && (
+                                  <span className="ad">
+                                    {m.description.slice(0, 90)}
+                                    {m.description.length > 90 ? '…' : ''}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                      <Fieldset
-                        label="Other offerings"
-                        hint="Add as many as you like — each is charged separately at checkout."
-                      >
-                        <select
-                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-                          value=""
-                          onChange={(e) => {
-                            const id = e.target.value;
-                            if (id) setCart((c) => [...new Set([...c, cartKey(key, id)])]);
-                          }}
-                        >
-                          <option value="">Add an offering…</option>
-                          {addable.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.title}
-                            </option>
-                          ))}
-                        </select>
-                        {offerings.length > 0 && (
-                          <div className="mt-3 space-y-1">
-                            {offerings.map((m) => (
-                              <div key={m.id} className="flex items-center gap-3 text-sm">
-                                <span className="flex-1 text-neutral-300">{m.title}</span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setCart((c) => c.filter((k) => k !== cartKey(key, m.id)))
-                                  }
-                                  className="text-neutral-500 hover:text-neutral-300"
-                                  aria-label="Remove"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
+                      {picked.length > 0 && (
+                        <div className="mt-4">
+                          <div className="bx-flabel" style={{ marginBottom: 8 }}>
+                            Included with the package
                           </div>
-                        )}
-                      </Fieldset>
+                          <div className="space-y-1">
+                            {picked.map((m) => {
+                              const isIncluded = m.id === included;
+                              return (
+                                <label key={m.id} className="flex items-center gap-3 text-sm">
+                                  <input
+                                    type="radio"
+                                    name={`inc-${key}`}
+                                    checked={isIncluded}
+                                    onChange={() =>
+                                      setIncludedActivation((c) => ({ ...c, [key]: m.id }))
+                                    }
+                                  />
+                                  <span className="flex-1 text-neutral-300">{m.title}</span>
+                                  <span className={isIncluded ? 'text-neutral-400' : 'text-neutral-500'}>
+                                    {isIncluded ? 'Included' : 'Option'}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                            <label className="flex items-center gap-3 text-sm">
+                              <input
+                                type="radio"
+                                name={`inc-${key}`}
+                                checked={noneIncluded}
+                                onChange={() =>
+                                  setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }))
+                                }
+                              />
+                              <span className="flex-1 text-neutral-400">
+                                None — sponsor picks from the options
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1160,8 +1128,8 @@ export function ProposalForm({
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
-            <Button onClick={() => setStep(addOnOffered ? 2 : contentOffered ? 3 : 4)}>
-              {addOnOffered ? 'Add-ons' : contentOffered ? 'Content proposal' : 'Sponsor details'}
+            <Button onClick={() => setStep(contentOffered ? 3 : 4)}>
+              {contentOffered ? 'Content proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
@@ -1414,7 +1382,7 @@ export function ProposalForm({
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(addOnOffered ? 2 : 1)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
             <Button onClick={() => setStep(4)}>Sponsor details</Button>
           </div>
         </StepPanel>
@@ -1669,7 +1637,7 @@ export function ProposalForm({
           {error && <p className="bx-err">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : addOnOffered ? 2 : 1)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : 1)}>Back</Button>
             <Button onClick={() => setShowCheckout(true)}>Review &amp; checkout</Button>
           </div>
         </StepPanel>
@@ -1775,9 +1743,9 @@ export function ProposalForm({
                         (v) => setPackagePrice((c) => ({ ...c, [key]: v }))
                       )}
 
-                      {/* What the package already covers — shown only when
-                          revealing originals, so "offer only" stays clean. */}
-                      {showOriginal && picked.length > 0 && included && (
+                      {/* The activation the package covers — always shown so the
+                          bundled choice is visible even in the offer-only view. */}
+                      {included && (
                         <div className="flex items-center gap-3 text-sm text-neutral-500">
                           <span className="flex-1">
                             Included: {picked.find((m) => m.id === included)?.title}
@@ -1786,43 +1754,14 @@ export function ProposalForm({
                         </div>
                       )}
 
-                      {/* Other offerings — extra activations, charged separately. */}
-                      {picked
-                        .filter((m) => m.id !== included)
-                        .map((m) =>
-                          chargedRow(
-                            m.id,
-                            `${m.title} · other offering`,
-                            catalogPriceForModule(key, m),
-                            extraActivationPrice(key, m),
-                            (v) => setMenuPrices((c) => ({ ...c, [menuKey(key, m.id)]: v }))
-                          )
-                        )}
-
-                      {/* Benefits added on the Add-ons step. */}
-                      {addedBenefitsForEvent(key).map((b) =>
-                        chargedRow(
-                          `b-${b}`,
-                          b,
-                          null,
-                          benefitCost[menuKey(key, b)] ?? '',
-                          (v) => setBenefitCost((c) => ({ ...c, [menuKey(key, b)]: v }))
-                        )
-                      )}
-
-                      {/* Extra passes beyond what the tier includes. */}
-                      {[
-                        { k: 'ga', text: 'Extra General Admission passes' },
-                        { k: 'vip', text: 'Extra VIP passes' },
-                      ].map(({ k, text }) =>
-                        chargedRow(
-                          k,
-                          text,
-                          null,
-                          extraTicketCost[menuKey(key, k)] ?? '',
-                          (v) => setExtraTicketCost((c) => ({ ...c, [menuKey(key, k)]: v }))
-                        )
-                      )}
+                      {/* Other activation options — free choices for the sponsor
+                          (the package covers one), so no charge. */}
+                      {otherOfferingsForEvent(key).map((m) => (
+                        <div key={m.id} className="flex items-center gap-3 text-sm text-neutral-500">
+                          <span className="flex-1">{m.title} · other offering</span>
+                          <span className="w-40 text-right">No charge</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 
