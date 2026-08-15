@@ -242,6 +242,9 @@ export function ProposalForm({
   const [tiersByEvent, setTiersByEvent] = useState<Record<string, string>>(existing?.tiers ?? {});
   // ---- Checkout state. Pricing lives in a modal opened from the Sponsor step.
   const [showCheckout, setShowCheckout] = useState(false);
+  // Checkout toggle: reveal the catalogue "original" prices beside the offer,
+  // or show only what's being offered.
+  const [showOriginal, setShowOriginal] = useState(false);
   /** The package-cost line per event, overriding the tier price. Left empty so
    *  it defaults to the tier price; on edit the rep re-itemises if they change
    *  picks, and the saved grand-total override (below) preserves the headline. */
@@ -1178,6 +1181,57 @@ export function ProposalForm({
             </div>
           ))}
 
+          {/* A package includes one activation; the others become "other
+              offerings", charged separately at checkout. Choose which is the
+              included one here, while the picks are in front of the rep. */}
+          {scopedEvents
+            .filter(
+              (key) =>
+                !onMenuFor(key) &&
+                tierForEventNow(key) &&
+                pickedActivationsForEvent(key).length > 1
+            )
+            .map((key) => {
+              const picked = pickedActivationsForEvent(key);
+              const included = includedActivationFor(key);
+              return (
+                <div key={`incl-${key}`} style={{ marginBottom: 24 }}>
+                  <div className="bx-subhead">
+                    <span className="t dim">
+                      {bothEvents ? `${ALL_EVENTS.find((e) => e.key === key)?.label ?? key} · ` : ''}
+                      Included with your {tierForEventNow(key)} package
+                    </span>
+                    <span className="rule" />
+                  </div>
+                  <p className="bx-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+                    Choose the one activation included in the package. The rest become other
+                    offerings, charged separately at checkout.
+                  </p>
+                  <div className="space-y-1">
+                    {picked.map((m) => {
+                      const isIncluded = m.id === included;
+                      return (
+                        <label key={m.id} className="flex items-center gap-3 text-sm">
+                          <input
+                            type="radio"
+                            name={`incl-step1-${key}`}
+                            checked={isIncluded}
+                            onChange={() =>
+                              setIncludedActivation((c) => ({ ...c, [key]: m.id }))
+                            }
+                          />
+                          <span className="flex-1 text-neutral-300">{m.title}</span>
+                          <span className={isIncluded ? 'text-neutral-400' : 'text-neutral-500'}>
+                            {isIncluded ? 'Included' : 'Other offering'}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
             <Button onClick={() => setStep(addOnOffered ? 2 : contentOffered ? 3 : 4)}>
@@ -1716,12 +1770,51 @@ export function ProposalForm({
               </button>
             </div>
 
+            {/* Toggle: reveal the catalogue originals (and what's bundled), or
+                show only what's being offered. */}
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOriginal((v) => !v)}
+                className="text-xs text-neutral-400 underline hover:text-neutral-200"
+              >
+                {showOriginal ? 'Show offer only' : 'Show original prices'}
+              </button>
+            </div>
+
             {scopedEvents.map((key) => {
               const isMenu = onMenuFor(key);
               const tier = tierForEventNow(key);
               if (!isMenu && !tier) return null;
               const picked = pickedActivationsForEvent(key);
+              const included = includedActivationFor(key);
               const charge = eventChargeValue(key);
+
+              // One charged line: label, the catalogue original (when the toggle
+              // is on) and the editable offer price.
+              const chargedRow = (
+                rowKey: string,
+                text: string,
+                original: number | null,
+                value: string,
+                onChange: (v: string) => void
+              ) => (
+                <div key={rowKey} className="flex items-center gap-3">
+                  <span className="flex-1 text-sm text-neutral-300">{text}</span>
+                  {showOriginal && (
+                    <span className="w-24 text-right text-xs text-neutral-500">
+                      {original !== null ? formatPrice(original) : '—'}
+                    </span>
+                  )}
+                  <Input
+                    value={value}
+                    onChange={(ev) => onChange(ev.target.value)}
+                    inputMode="decimal"
+                    className="w-40"
+                  />
+                </div>
+              );
+
               return (
                 <div key={`co-${key}`} className="mb-5">
                   {bothEvents && (
@@ -1734,103 +1827,76 @@ export function ProposalForm({
                     <div className="space-y-2">
                       {menuItemsForEvent(key)
                         .filter((item) => menuPicks.includes(menuKey(key, item.key)))
-                        .map((item) => (
-                          <div key={item.key} className="flex items-center gap-3">
-                            <span className="flex-1 text-sm text-neutral-300">{item.label}</span>
-                            <Input
-                              value={menuPrices[menuKey(key, item.key)] ?? String(item.price)}
-                              onChange={(ev) =>
-                                setMenuPrices((c) => ({ ...c, [menuKey(key, item.key)]: ev.target.value }))
-                              }
-                              inputMode="decimal"
-                              className="w-40"
-                            />
-                          </div>
-                        ))}
+                        .map((item) =>
+                          chargedRow(
+                            item.key,
+                            item.label,
+                            item.price,
+                            menuPrices[menuKey(key, item.key)] ?? String(item.price),
+                            (v) => setMenuPrices((c) => ({ ...c, [menuKey(key, item.key)]: v }))
+                          )
+                        )}
                       {menuTicketInputs(key)}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <span className="flex-1 text-sm text-neutral-300">{tier} package</span>
-                        <Input
-                          value={packagePrice[key] ?? defaultPackagePrice(key)}
-                          onChange={(ev) =>
-                            setPackagePrice((c) => ({ ...c, [key]: ev.target.value }))
-                          }
-                          inputMode="decimal"
-                          className="w-40"
-                        />
-                      </div>
+                      {/* The package price — this is the bundle. */}
+                      {chargedRow(
+                        `pkg-${key}`,
+                        `${tier} package`,
+                        parsePrice(priceFor(key, tier ?? '')),
+                        packagePrice[key] ?? defaultPackagePrice(key),
+                        (v) => setPackagePrice((c) => ({ ...c, [key]: v }))
+                      )}
 
-                      {picked.length > 1 && (
-                        <div className="space-y-2 pt-1">
-                          <div className="text-xs uppercase tracking-wider text-neutral-500">
-                            Activations — one included, the rest charged
-                          </div>
-                          {picked.map((m) => {
-                            const isIncluded = m.id === includedActivationFor(key);
-                            return (
-                              <div key={m.id} className="flex items-center gap-3 text-sm">
-                                <input
-                                  type="radio"
-                                  name={`co-incl-${key}`}
-                                  checked={isIncluded}
-                                  onChange={() =>
-                                    setIncludedActivation((c) => ({ ...c, [key]: m.id }))
-                                  }
-                                />
-                                <span className="flex-1 text-neutral-300">{m.title}</span>
-                                {isIncluded ? (
-                                  <span className="w-40 text-right text-neutral-500">Included</span>
-                                ) : (
-                                  <Input
-                                    value={extraActivationPrice(key, m)}
-                                    onChange={(ev) =>
-                                      setMenuPrices((c) => ({ ...c, [menuKey(key, m.id)]: ev.target.value }))
-                                    }
-                                    inputMode="decimal"
-                                    className="w-40"
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
+                      {/* What the package already covers — shown only when
+                          revealing originals, so "offer only" stays clean. */}
+                      {showOriginal && picked.length > 0 && included && (
+                        <div className="flex items-center gap-3 text-sm text-neutral-500">
+                          <span className="flex-1">
+                            Included: {picked.find((m) => m.id === included)?.title}
+                          </span>
+                          <span className="w-40 text-right">Bundled</span>
                         </div>
                       )}
 
-                      {addedBenefitsForEvent(key).map((label) => (
-                        <div key={label} className="flex items-center gap-3">
-                          <span className="flex-1 text-sm text-neutral-300">{label}</span>
-                          <Input
-                            value={benefitCost[menuKey(key, label)] ?? ''}
-                            onChange={(ev) =>
-                              setBenefitCost((c) => ({ ...c, [menuKey(key, label)]: ev.target.value }))
-                            }
-                            placeholder="0"
-                            inputMode="decimal"
-                            className="w-40"
-                          />
-                        </div>
-                      ))}
+                      {/* Other offerings — extra activations, charged separately. */}
+                      {picked
+                        .filter((m) => m.id !== included)
+                        .map((m) =>
+                          chargedRow(
+                            m.id,
+                            `${m.title} · other offering`,
+                            catalogPriceForModule(key, m),
+                            extraActivationPrice(key, m),
+                            (v) => setMenuPrices((c) => ({ ...c, [menuKey(key, m.id)]: v }))
+                          )
+                        )}
 
+                      {/* Benefits added on the Add-ons step. */}
+                      {addedBenefitsForEvent(key).map((b) =>
+                        chargedRow(
+                          `b-${b}`,
+                          b,
+                          null,
+                          benefitCost[menuKey(key, b)] ?? '',
+                          (v) => setBenefitCost((c) => ({ ...c, [menuKey(key, b)]: v }))
+                        )
+                      )}
+
+                      {/* Extra passes beyond what the tier includes. */}
                       {[
-                        { k: 'ga', label: 'Extra General Admission passes' },
-                        { k: 'vip', label: 'Extra VIP passes' },
-                      ].map(({ k, label }) => (
-                        <div key={k} className="flex items-center gap-3">
-                          <span className="flex-1 text-sm text-neutral-300">{label}</span>
-                          <Input
-                            value={extraTicketCost[menuKey(key, k)] ?? ''}
-                            onChange={(ev) =>
-                              setExtraTicketCost((c) => ({ ...c, [menuKey(key, k)]: ev.target.value }))
-                            }
-                            placeholder="0"
-                            inputMode="decimal"
-                            className="w-40"
-                          />
-                        </div>
-                      ))}
+                        { k: 'ga', text: 'Extra General Admission passes' },
+                        { k: 'vip', text: 'Extra VIP passes' },
+                      ].map(({ k, text }) =>
+                        chargedRow(
+                          k,
+                          text,
+                          null,
+                          extraTicketCost[menuKey(key, k)] ?? '',
+                          (v) => setExtraTicketCost((c) => ({ ...c, [menuKey(key, k)]: v }))
+                        )
+                      )}
                     </div>
                   )}
 
