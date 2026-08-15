@@ -31,6 +31,9 @@ const SPEAKING_ROW = /fireside|keynote/i;
 // this replaced compared "Presenting" against "PRESENTING" and so silently
 // matched nothing at all.
 const TIERS = ['Presenting', 'Diamond', 'Platinum', 'Gold'];
+/** Sentinel for "no activation is included in the package" — every picked
+ *  activation is charged. */
+const NONE_INCLUDED = '__none__';
 /** Where a tier sits in the canonical order (Presenting → Gold). Used to sort
  *  tier lists read off a pricing table, whose keys come in no fixed order.
  *  Unknown tiers sort to the end. */
@@ -510,11 +513,15 @@ export function ProposalForm({
       .filter((k) => cartEvent(k) === eventKey)
       .map((k) => byId.get(cartModuleId(k)))
       .filter((m): m is SponsorshipModule => Boolean(m));
-  /** Which picked activation the package covers — the rep's mark, or the first. */
-  const includedActivationFor = (eventKey: string) => {
+  /** Which picked activation the package covers: the rep's mark, or the first
+   *  by default. NONE_INCLUDED means the rep chose to include none — every
+   *  activation is then charged. */
+  const includedActivationFor = (eventKey: string): string | undefined => {
     const picked = pickedActivationsForEvent(eventKey);
     const marked = includedActivation[eventKey];
-    return marked && picked.some((m) => m.id === marked) ? marked : picked[0]?.id;
+    if (marked === NONE_INCLUDED) return undefined;
+    if (marked && picked.some((m) => m.id === marked)) return marked;
+    return picked[0]?.id;
   };
   /** The charged extra activations on a package city — everything but the one
    *  it includes. Empty for an à la carte city. */
@@ -1189,11 +1196,12 @@ export function ProposalForm({
               (key) =>
                 !onMenuFor(key) &&
                 tierForEventNow(key) &&
-                pickedActivationsForEvent(key).length > 1
+                pickedActivationsForEvent(key).length > 0
             )
             .map((key) => {
               const picked = pickedActivationsForEvent(key);
               const included = includedActivationFor(key);
+              const noneIncluded = includedActivation[key] === NONE_INCLUDED;
               return (
                 <div key={`incl-${key}`} style={{ marginBottom: 24 }}>
                   <div className="bx-subhead">
@@ -1204,8 +1212,8 @@ export function ProposalForm({
                     <span className="rule" />
                   </div>
                   <p className="bx-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-                    Choose the one activation included in the package. The rest become other
-                    offerings, charged separately at checkout.
+                    Choose the one activation included in the package, or none. The rest become
+                    other offerings, charged separately at checkout.
                   </p>
                   <div className="space-y-1">
                     {picked.map((m) => {
@@ -1227,6 +1235,19 @@ export function ProposalForm({
                         </label>
                       );
                     })}
+                    <label className="flex items-center gap-3 text-sm">
+                      <input
+                        type="radio"
+                        name={`incl-step1-${key}`}
+                        checked={noneIncluded}
+                        onChange={() =>
+                          setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }))
+                        }
+                      />
+                      <span className="flex-1 text-neutral-400">
+                        None — charge every activation
+                      </span>
+                    </label>
                   </div>
                 </div>
               );
