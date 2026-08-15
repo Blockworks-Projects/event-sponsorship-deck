@@ -451,15 +451,15 @@ export function ProposalForm({
       .filter((k) => cartEvent(k) === eventKey)
       .map((k) => byId.get(cartModuleId(k)))
       .filter((m): m is SponsorshipModule => Boolean(m));
-  /** Which picked activation the package covers: the rep's mark, or the first
-   *  by default. NONE_INCLUDED means the rep chose to include none — every
-   *  activation is then charged. */
+  /** Which picked activation the package covers, if the rep has decided.
+   *  Undefined means undecided — the sponsor picks from the options. */
   const includedActivationFor = (eventKey: string): string | undefined => {
     const picked = pickedActivationsForEvent(eventKey);
     const marked = includedActivation[eventKey];
-    if (marked === NONE_INCLUDED) return undefined;
-    if (marked && picked.some((m) => m.id === marked)) return marked;
-    return picked[0]?.id;
+    // Unset means undecided (no default) — the rep explicitly picks the
+    // included one; everything else stays an option for the sponsor.
+    if (marked && marked !== NONE_INCLUDED && picked.some((m) => m.id === marked)) return marked;
+    return undefined;
   };
   /** The other activation options on a package city — everything but the one
    *  it includes. These are free choices for the sponsor (the package covers
@@ -597,12 +597,12 @@ export function ProposalForm({
       .map((row) => row.label);
   };
 
-  // Events with a chart to tweak: a tier city once its tier is picked, and the
-  // à la carte city too — it has no tier of its own, but the same chart's
-  // benefits (speaking included) can still be added on to the package.
+  // Add-ons are for à la carte only now — a package is one price, so it has no
+  // chart to tweak. An à la carte city has no tier of its own, but the chart's
+  // benefits can still be added on to the basket.
   const isMenuEvent = (key: string) => onMenuFor(key);
   const addOnEvents = scopedEvents.filter(
-    (key) => !!tierTableFor(key) && (isMenuEvent(key) || !!tierAt(key))
+    (key) => !!tierTableFor(key) && isMenuEvent(key)
   );
   const addOnOffered = addOnEvents.length > 0;
   // Whether the rep has actually changed anything — drives the custom-pricing
@@ -807,8 +807,8 @@ export function ProposalForm({
     <div>
       <ol className="bx-steps-top">
         {STEPS.map((name, i) => {
-          // Add-ons (2) is retired — a package is one price with free options.
-          if (i === 2 || (i === 3 && !contentOffered)) return null;
+          // Add-ons (2) shows only for à la carte; a package is one price.
+          if ((i === 2 && !addOnOffered) || (i === 3 && !contentOffered)) return null;
           // Steps are navigable, not locked: changing the scope after picking
           // shouldn't mean starting again. Anything before the current step
           // reads as done.
@@ -1021,15 +1021,23 @@ export function ProposalForm({
             </div>
           ))}
 
-          {/* Tier cities: a grid of activation options. One comes with the
-              package; the rest are free choices for the sponsor to pick from. */}
+          {/* Tier cities: pick the included activation from a dropdown, and add
+              any undecided options for the sponsor to choose from. Scoped to the
+              tier being bought. */}
           {scopedEvents
             .filter((key) => !onMenuFor(key) && tierForEventNow(key))
             .map((key) => {
-              const all = activationsForEvent(key);
+              // Only this tier's activations — a package's options are scoped to
+              // the tier it's buying (à la carte, handled elsewhere, shows all).
+              const tierNow = (tierForEventNow(key) || '').toLowerCase();
+              const all = activationsForEvent(key).filter(
+                (m) => (m.tier || '').toLowerCase() === tierNow
+              );
               const included = includedActivationFor(key);
-              const noneIncluded = includedActivation[key] === NONE_INCLUDED;
-              const picked = pickedActivationsForEvent(key);
+              // Unset or "none" both read as Undecided in the dropdown.
+              const includedVal = included ?? NONE_INCLUDED;
+              const offerings = pickedActivationsForEvent(key).filter((m) => m.id !== included);
+              const addable = all.filter((m) => !cart.includes(cartKey(key, m.id)));
               return (
                 <div key={`act-${key}`} style={{ marginBottom: 28 }}>
                   <div className="bx-subhead">
@@ -1039,87 +1047,78 @@ export function ProposalForm({
                     </span>
                     <span className="rule" />
                   </div>
-                  <p className="bx-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-                    One activation comes with the package. Tick any options to show the sponsor —
-                    they choose one. Options don&apos;t add to the price.
-                  </p>
 
                   {all.length === 0 ? (
                     <p className="bx-hint" style={{ marginTop: 0 }}>
-                      No activations have synced for this event yet.
+                      No activations listed for this tier.
                     </p>
                   ) : (
                     <>
-                      <div className="bx-cards">
-                        {all.map((m) => {
-                          const on = cart.includes(cartKey(key, m.id));
-                          return (
-                            <button
-                              type="button"
-                              key={m.id}
-                              onClick={() => toggle(cart, cartKey(key, m.id), setCart)}
-                              className={`bx-selcard${on ? ' sel' : ''}`}
-                            >
-                              <span className="bx-cbox">
-                                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth={3}>
-                                  <path d="M5 12l5 5L19 6" />
-                                </svg>
-                              </span>
-                              <span>
-                                <span className="at">{m.title}</span>
-                                {m.description && (
-                                  <span className="ad">
-                                    {m.description.slice(0, 90)}
-                                    {m.description.length > 90 ? '…' : ''}
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <Fieldset
+                        label="Included activation"
+                        hint="The one that comes with the package. Leave undecided to let the sponsor choose."
+                      >
+                        <select
+                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+                          value={includedVal}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (id === NONE_INCLUDED || id === '') {
+                              setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }));
+                            } else {
+                              setIncludedActivation((c) => ({ ...c, [key]: id }));
+                              setCart((c) => [...new Set([...c, cartKey(key, id)])]);
+                            }
+                          }}
+                        >
+                          <option value={NONE_INCLUDED}>Undecided — sponsor selects</option>
+                          {all.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.title}
+                            </option>
+                          ))}
+                        </select>
+                      </Fieldset>
 
-                      {picked.length > 0 && (
-                        <div className="mt-4">
-                          <div className="bx-flabel" style={{ marginBottom: 8 }}>
-                            Included with the package
+                      <Fieldset
+                        label="Options to choose from"
+                        hint="Undecided — add options here for the sponsor to select. No extra cost."
+                      >
+                        <select
+                          className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+                          value=""
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (id) setCart((c) => [...new Set([...c, cartKey(key, id)])]);
+                          }}
+                        >
+                          <option value="">Add an option…</option>
+                          {addable.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.title}
+                            </option>
+                          ))}
+                        </select>
+                        {offerings.length > 0 && (
+                          <div className="mt-3 space-y-1">
+                            {offerings.map((m) => (
+                              <div key={m.id} className="flex items-center gap-3 text-sm">
+                                <span className="flex-1 text-neutral-300">{m.title}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCart((c) => c.filter((k) => k !== cartKey(key, m.id)))
+                                  }
+                                  className="text-neutral-500 hover:text-neutral-300"
+                                  aria-label="Remove"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                          <div className="space-y-1">
-                            {picked.map((m) => {
-                              const isIncluded = m.id === included;
-                              return (
-                                <label key={m.id} className="flex items-center gap-3 text-sm">
-                                  <input
-                                    type="radio"
-                                    name={`inc-${key}`}
-                                    checked={isIncluded}
-                                    onChange={() =>
-                                      setIncludedActivation((c) => ({ ...c, [key]: m.id }))
-                                    }
-                                  />
-                                  <span className="flex-1 text-neutral-300">{m.title}</span>
-                                  <span className={isIncluded ? 'text-neutral-400' : 'text-neutral-500'}>
-                                    {isIncluded ? 'Included' : 'Option'}
-                                  </span>
-                                </label>
-                              );
-                            })}
-                            <label className="flex items-center gap-3 text-sm">
-                              <input
-                                type="radio"
-                                name={`inc-${key}`}
-                                checked={noneIncluded}
-                                onChange={() =>
-                                  setIncludedActivation((c) => ({ ...c, [key]: NONE_INCLUDED }))
-                                }
-                              />
-                              <span className="flex-1 text-neutral-400">
-                                None — sponsor picks from the options
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </Fieldset>
                     </>
                   )}
                 </div>
@@ -1128,19 +1127,18 @@ export function ProposalForm({
 
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setStep(0)}>Back</Button>
-            <Button onClick={() => setStep(contentOffered ? 3 : 4)}>
-              {contentOffered ? 'Content proposal' : 'Sponsor details'}
+            <Button onClick={() => setStep(addOnOffered ? 2 : contentOffered ? 3 : 4)}>
+              {addOnOffered ? 'Add-ons' : contentOffered ? 'Content proposal' : 'Sponsor details'}
             </Button>
           </div>
         </StepPanel>
       )}
 
       {step === 2 && addOnOffered && (
-        <StepPanel title="Add-ons" hint="Tune what's in the package">
+        <StepPanel title="Add-ons" hint="Optional extras for the à la carte basket">
           <p className="mb-6 text-sm text-neutral-400">
-            Remove anything a tier includes that you&apos;re not offering, and open
-            Add on for extras from the chart that aren&apos;t already included. Any
-            change here switches the package to custom pricing on the last step.
+            Open Add on for any extras from the chart to include alongside the à la
+            carte items.
           </p>
           {addOnEvents.map((key) => {
             const tier = tierAt(key);
@@ -1382,7 +1380,7 @@ export function ProposalForm({
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(addOnOffered ? 2 : 1)}>Back</Button>
             <Button onClick={() => setStep(4)}>Sponsor details</Button>
           </div>
         </StepPanel>
@@ -1637,7 +1635,7 @@ export function ProposalForm({
           {error && <p className="bx-err">{error}</p>}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : 1)}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(contentOffered ? 3 : addOnOffered ? 2 : 1)}>Back</Button>
             <Button onClick={() => setShowCheckout(true)}>Review &amp; checkout</Button>
           </div>
         </StepPanel>
