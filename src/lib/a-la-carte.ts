@@ -61,6 +61,9 @@ export const A_LA_CARTE_CATALOG: Record<string, CatalogItem[]> = {
     { key: 'vip-speaker-lounge', label: 'VIP & Speaker Lounge', price: 50000 },
     { key: 'vip-speaker-dinner', label: 'VIP & Speaker Dinner', price: 50000 },
     { key: 'main-stage-sponsor', label: 'Main Stage Sponsor', price: 50000 },
+    { key: 'investor-stage-5', label: '5 Minute Investor Stage Session', price: 10000, speaking: true },
+    { key: 'investor-stage-15', label: '15 Minute Investor Stage Session', price: 25000, speaking: true },
+    { key: 'mainstage-20', label: '20 Minute Main Stage Session', price: 45000, speaking: true },
   ],
   asia: [
     { key: 'investor-stage-5', label: '5 Minute Investor Stage Session', price: 10000, speaking: true },

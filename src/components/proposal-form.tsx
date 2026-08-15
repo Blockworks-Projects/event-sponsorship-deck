@@ -600,6 +600,9 @@ export function ProposalForm({
       .filter((row) => !TITLE_ROW.test(row.label))
       // Speaking is handled as its own priced opportunity, not an add-on.
       .filter((row) => !SPEAKING_ROW.test(row.label) && !/speaking/i.test(row.label))
+      // "Branding & Activation item included" is a tier concept — à la carte
+      // picks its activations directly, so it isn't an add-on here.
+      .filter((row) => !/branding\s*&?\s*activation/i.test(row.label))
       .filter((row) => !hidesKioskRow(includeKiosk, row.label))
       .filter((row) => !already.has(row.label))
       // Only rows some other tier actually grants — a line that's a dash in
@@ -990,7 +993,7 @@ export function ProposalForm({
                   <span className="rule" />
                 </div>
 
-                <Fieldset label="Activations" hint="Select what's included in this package.">
+                <Fieldset label="Activations" hint="Select what's included in this package." stackHint>
                   <select
                     className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
                     value=""
@@ -1028,7 +1031,7 @@ export function ProposalForm({
                 {/* Speaking opportunities — listed with their cost. Only events
                     that sell them show this (Asia today, not London). */}
                 {speakingAll.length > 0 && (
-                  <Fieldset label="Speaking opportunities" hint="Select any to include, each at its cost.">
+                  <Fieldset label="Speaking opportunities" hint="Select any to include, each at its cost." stackHint>
                     <div className="space-y-1">
                       {speakingAll.map((i) => {
                         const on = menuPicks.includes(menuKey(eventKey, i.key));
@@ -1108,6 +1111,7 @@ export function ProposalForm({
                       <Fieldset
                         label="Included activation"
                         hint="The one that comes with the package. (Leave undecided to let the sponsor choose)"
+                        stackHint
                       >
                         <select
                           className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
@@ -1142,6 +1146,7 @@ export function ProposalForm({
                         <Fieldset
                           label="Options to choose from"
                           hint="Undecided, add options here for the sponsor to select."
+                          stackHint
                         >
                           <select
                             className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
@@ -1951,36 +1956,27 @@ function Fieldset({
   label,
   hint,
   required,
-  stackHint,
   children,
 }: {
   label: string;
   hint?: string;
   required?: boolean;
-  /** Hint on its own line beneath the label, for hints too long to sit beside it. */
+  /** Kept for older call sites; the hint always stacks beneath the label now. */
   stackHint?: boolean;
   children: React.ReactNode;
 }) {
+  // A title with its description as a subtitle underneath — never a long hint
+  // running on inline beside the label.
   return (
     <div className="bx-field">
-      <div
-        className="bx-flabel"
-        style={
-          stackHint
-            ? undefined
-            : { display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 7 }
-        }
-      >
+      <div className="bx-flabel" style={{ marginBottom: 2 }}>
         <span>
           {label}
           {/* Marked up front rather than only failing on submit. */}
           {required && <span className="req"> *</span>}
         </span>
-        {hint && !stackHint && <span className="opt">{hint}</span>}
       </div>
-      {hint && stackHint && (
-        <div className="bx-hint" style={{ marginTop: -3, marginBottom: 8 }}>{hint}</div>
-      )}
+      {hint && <div className="bx-hint" style={{ marginTop: 0, marginBottom: 8 }}>{hint}</div>}
       {children}
     </div>
   );
