@@ -426,9 +426,13 @@ export function ProposalForm({
         });
       });
     // Bundled inclusions, listed with no price: added benefits, then passes.
-    (overrides[eventKey]?.added ?? []).forEach((label) => {
-      lines.push({ key: `benefit:${label}`, label, event: eventKey, moduleId: null, price: null });
-    });
+    // GA/VIP benefits are skipped here — they're carried by the pass lines with
+    // their count, so they aren't listed twice.
+    (overrides[eventKey]?.added ?? [])
+      .filter((label) => !/general admission|vip/i.test(label))
+      .forEach((label) => {
+        lines.push({ key: `benefit:${label}`, label, event: eventKey, moduleId: null, price: null });
+      });
     lines.push(...ticketLinesForEvent(eventKey));
     return lines;
   });
@@ -594,6 +598,8 @@ export function ProposalForm({
     const already = new Set(includedRows(eventKey));
     return (table.tier_rows ?? [])
       .filter((row) => !TITLE_ROW.test(row.label))
+      // Speaking is handled as its own priced opportunity, not an add-on.
+      .filter((row) => !SPEAKING_ROW.test(row.label) && !/speaking/i.test(row.label))
       .filter((row) => !hidesKioskRow(includeKiosk, row.label))
       .filter((row) => !already.has(row.label))
       // Only rows some other tier actually grants — a line that's a dash in
@@ -971,10 +977,10 @@ export function ProposalForm({
               each picked item lists below with its price. */}
           {menuScope.map((eventKey) => {
             const catalog = catalogFor(eventKey);
-            const pickedItems = catalog.filter((i) => menuPicks.includes(menuKey(eventKey, i.key)));
-            const addableItems = catalog.filter((i) => !menuPicks.includes(menuKey(eventKey, i.key)));
-            const branding = addableItems.filter((i) => !i.speaking);
-            const speaking = addableItems.filter((i) => i.speaking);
+            const brandingAll = catalog.filter((i) => !i.speaking);
+            const speakingAll = catalog.filter((i) => i.speaking);
+            const brandingPicked = brandingAll.filter((i) => menuPicks.includes(menuKey(eventKey, i.key)));
+            const brandingAddable = brandingAll.filter((i) => !menuPicks.includes(menuKey(eventKey, i.key)));
             return (
               <div key={`menu-${eventKey}`} style={{ marginBottom: 28 }}>
                 <div className="bx-subhead">
@@ -984,7 +990,7 @@ export function ProposalForm({
                   <span className="rule" />
                 </div>
 
-                <Fieldset label="Items" hint="Add as many as you like — each carries its price.">
+                <Fieldset label="Activations" hint="Select what's included in this package.">
                   <select
                     className="w-full max-w-md rounded-none border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
                     value=""
@@ -992,29 +998,16 @@ export function ProposalForm({
                       if (e.target.value) toggleMenuPick(eventKey, e.target.value);
                     }}
                   >
-                    <option value="">Add an item…</option>
-                    {branding.length > 0 && (
-                      <optgroup label="Branding & Activations">
-                        {branding.map((i) => (
-                          <option key={i.key} value={i.key}>
-                            {i.label} — {formatPrice(i.price)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {speaking.length > 0 && (
-                      <optgroup label="Speaking">
-                        {speaking.map((i) => (
-                          <option key={i.key} value={i.key}>
-                            {i.label} — {formatPrice(i.price)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
+                    <option value="">Add an activation…</option>
+                    {brandingAddable.map((i) => (
+                      <option key={i.key} value={i.key}>
+                        {i.label} — {formatPrice(i.price)}
+                      </option>
+                    ))}
                   </select>
-                  {pickedItems.length > 0 && (
+                  {brandingPicked.length > 0 && (
                     <div className="mt-3 space-y-1">
-                      {pickedItems.map((i) => (
+                      {brandingPicked.map((i) => (
                         <div key={i.key} className="flex items-center gap-3 text-sm">
                           <span className="flex-1 text-neutral-300">{i.label}</span>
                           <span className="text-neutral-500">{formatPrice(i.price)}</span>
@@ -1031,6 +1024,29 @@ export function ProposalForm({
                     </div>
                   )}
                 </Fieldset>
+
+                {/* Speaking opportunities — listed with their cost. Only events
+                    that sell them show this (Asia today, not London). */}
+                {speakingAll.length > 0 && (
+                  <Fieldset label="Speaking opportunities" hint="Select any to include, each at its cost.">
+                    <div className="space-y-1">
+                      {speakingAll.map((i) => {
+                        const on = menuPicks.includes(menuKey(eventKey, i.key));
+                        return (
+                          <label key={i.key} className="flex items-center gap-3 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => toggleMenuPick(eventKey, i.key)}
+                            />
+                            <span className="flex-1 text-neutral-300">{i.label}</span>
+                            <span className="text-neutral-500">{formatPrice(i.price)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </Fieldset>
+                )}
               </div>
             );
           })}
@@ -1770,8 +1786,9 @@ export function ProposalForm({
                     </span>
                   )}
                   <Input
-                    value={value}
-                    onChange={(ev) => onChange(ev.target.value)}
+                    // Shown formatted ("$100,000"); only the digits are stored.
+                    value={value ? formatPrice(parsePrice(value) ?? 0) : ''}
+                    onChange={(ev) => onChange(ev.target.value.replace(/[^\d.]/g, ''))}
                     inputMode="decimal"
                     className="w-40"
                   />
@@ -1797,8 +1814,11 @@ export function ProposalForm({
                         (v) => setPackagePrice((c) => ({ ...c, [key]: v }))
                       )}
 
-                      {/* Bundled in, no separate price: added benefits and passes. */}
-                      {(overrides[key]?.added ?? []).map((label) => (
+                      {/* Bundled in, no separate price: added benefits and passes.
+                          GA/VIP are shown by the pass rows below, not here. */}
+                      {(overrides[key]?.added ?? [])
+                        .filter((label) => !/general admission|vip/i.test(label))
+                        .map((label) => (
                         <div key={label} className="flex items-center gap-3 text-sm text-neutral-500">
                           <span className="flex-1">{label}</span>
                           <span className="w-40 text-right">In bundle</span>
@@ -1852,9 +1872,9 @@ export function ProposalForm({
 
                       {/* Other activation options — free choices for the sponsor
                           (the package covers one), so no charge. */}
-                      {otherOfferingsForEvent(key).map((m) => (
+                      {otherOfferingsForEvent(key).map((m, i) => (
                         <div key={m.id} className="flex items-center gap-3 text-sm text-neutral-500">
-                          <span className="flex-1">{m.title} · other offering</span>
+                          <span className="flex-1">{m.title} · Option {i + 1}</span>
                           <span className="w-40 text-right">No charge</span>
                         </div>
                       ))}
@@ -1875,9 +1895,9 @@ export function ProposalForm({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-neutral-400">Total override</span>
                 <Input
-                  value={grandTotalOverride}
-                  onChange={(ev) => setGrandTotalOverride(ev.target.value)}
-                  placeholder={grandTotalValue !== null ? String(grandTotalValue) : 'Total'}
+                  value={grandTotalOverride ? formatPrice(parsePrice(grandTotalOverride) ?? 0) : ''}
+                  onChange={(ev) => setGrandTotalOverride(ev.target.value.replace(/[^\d.]/g, ''))}
+                  placeholder={grandTotalValue !== null ? formatPrice(grandTotalValue) : 'Total'}
                   inputMode="decimal"
                   className="w-40"
                 />

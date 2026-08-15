@@ -179,24 +179,66 @@ export function PriceBreakdown({
                 <dd className="text-sm font-semibold text-neutral-900">{line.net}</dd>
               </div>
             ))}
-          {menu.length > 0
-            ? menu.map((item) => (
-                <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
-                  <dt className="text-sm text-neutral-700">
-                    {EVENT_LABEL[item.event] ?? item.event} · {item.label}
-                  </dt>
-                  {/* Passes are included, not billed — show the count, not a
-                      price, so the total still reads as the sum of the items. */}
-                  <dd className="text-sm font-semibold text-neutral-900">
-                    {item.qty != null
-                      ? `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}`
-                      : item.price
-                      ? formatPrice(parsePrice(item.price) ?? 0)
-                      : '—'}
-                  </dd>
-                </div>
-              ))
-            : perEvent
+          {menu.length > 0 ? (
+            <>
+              {/* The bundle price first, like a package. */}
+              {menu
+                .filter((item) => item.key === 'ala-package')
+                .map((item) => (
+                  <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
+                    <dt className="text-sm text-neutral-700">
+                      {EVENT_LABEL[item.event] ?? item.event} · {item.label}
+                    </dt>
+                    <dd className="text-sm font-semibold text-neutral-900">
+                      {item.price ? formatPrice(parsePrice(item.price) ?? 0) : '—'}
+                    </dd>
+                  </div>
+                ))}
+
+              {/* What the bundle includes — listed as bullets, no separate
+                  charge (passes show their count). */}
+              {(() => {
+                const bundled = menu.filter(
+                  (item) => item.key !== 'ala-package' && (item.qty != null || !item.price)
+                );
+                if (!bundled.length) return null;
+                return (
+                  <div className="py-3">
+                    <ul className="space-y-1.5">
+                      {bundled.map((item) => (
+                        <li
+                          key={`${item.event}|${item.key}`}
+                          className="flex justify-between gap-6 text-sm text-neutral-600"
+                        >
+                          <span className="flex gap-2">
+                            <span aria-hidden style={{ color: accent }}>•</span>
+                            {EVENT_LABEL[item.event] ?? item.event} · {item.label}
+                          </span>
+                          {item.qty != null && (
+                            <span>{item.qty} {item.qty === 1 ? 'pass' : 'passes'}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* Priced add-ons — activations and speaking, each adding on. */}
+              {menu
+                .filter((item) => item.key !== 'ala-package' && item.qty == null && item.price)
+                .map((item) => (
+                  <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
+                    <dt className="text-sm text-neutral-700">
+                      {EVENT_LABEL[item.event] ?? item.event} · {item.label}
+                    </dt>
+                    <dd className="text-sm font-semibold text-neutral-900">
+                      {formatPrice(parsePrice(item.price) ?? 0)}
+                    </dd>
+                  </div>
+                ))}
+            </>
+          ) : perEvent
             ? lines.map((line) => (
                 <div key={line.event} className="flex justify-between gap-6 py-3">
                   <dt className="text-sm text-neutral-700">

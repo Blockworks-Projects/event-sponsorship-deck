@@ -192,6 +192,9 @@ export function ProposalView({
   // and the investment section lists what was actually picked.
   const menu = proposal.a_la_carte ?? [];
   const onMenu = menu.length > 0;
+  // Which events were sold à la carte — those activations are all bought, so
+  // they never carry the "pick one" note that a tier's options do.
+  const menuEvents = new Set(menu.map((line) => line.event));
 
   const gateBothEvents = proposal.event === 'both';
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
@@ -636,6 +639,15 @@ export function ProposalView({
                   ))}
                 </div>
 
+                {/* More than one option on a package: the sponsor picks one to
+                    include with the tier. */}
+                {!menuEvents.has(key) && items.length > 1 && (
+                  <p className="mt-3 text-sm font-semibold" style={{ color: EVENT_ACCENT[key] ?? accent }}>
+                    Please select one activation to be included in your{' '}
+                    {proposal.tiers?.[key] ?? ''} package.
+                  </p>
+                )}
+
                 {/* That city's session sits with its activations, so each city
                     reads as one block rather than the sessions all landing
                     together after both. */}
@@ -654,13 +666,23 @@ export function ProposalView({
           })
         ) : (
           activations.length > 0 && (
-            <div className="pdf-two-up mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-              {activations.map((m) => (
-                <div key={m.id} className="pdf-block h-full">
-                  <ModuleCard module={m} />
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="pdf-two-up mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                {activations.map((m) => (
+                  <div key={m.id} className="pdf-block h-full">
+                    <ModuleCard module={m} />
+                  </div>
+                ))}
+              </div>
+              {/* More than one option on a package: the sponsor picks one to
+                  include with the tier. */}
+              {!onMenu && activations.length > 1 && (
+                <p className="mt-3 text-sm font-semibold" style={{ color: accent }}>
+                  Please select one activation to be included in your{' '}
+                  {proposal.tier ?? ''} package.
+                </p>
+              )}
+            </>
           )
         )}
       </section>
