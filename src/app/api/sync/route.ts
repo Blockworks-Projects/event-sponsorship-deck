@@ -114,13 +114,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const pages = await syncDeckPages_(sourceUrl, token);
+  const { pages, partialDecks } = await syncDeckPages_(sourceUrl, token);
+
+  // A run that hits the Slides render quota comes back short rather than
+  // failing: the script logs the slides it couldn't render and returns the
+  // rest, so those modules keep whatever Supabase already had. Counting what
+  // the catalog holds against what this run returned is the only way that
+  // shows up — otherwise a half-finished sync reports as a clean one and the
+  // stale cards look like a formatting bug.
+  const { count: stored } = await supabase
+    .from('sponsorship_modules')
+    .select('*', { count: 'exact', head: true });
+  const notReturned = Math.max(0, (stored ?? 0) - rows.length);
 
   const failed = results.filter((r) => !r.ok);
   return NextResponse.json({
     synced: results.length - failed.length,
     failed: failed.length,
     pages,
+    // Modules already in the catalog that this run didn't send back at all.
+    notReturned,
+    // Decks that rendered fewer pages than are already stored.
+    partialDecks,
     errors: failed,
   });
 }
@@ -130,7 +145,10 @@ export async function POST(req: NextRequest) {
  * sponsor-facing browse view. Best-effort: a failure here shouldn't fail a
  * catalog sync that already succeeded.
  */
-async function syncDeckPages_(sourceUrl: string, token: string): Promise<number> {
+async function syncDeckPages_(
+  sourceUrl: string,
+  token: string
+): Promise<{ pages: number; partialDecks: string[] }> {
   // Both sponsorship decks. 'das' is the London/Asia master deck and the one
   // the script serves by default, so it is requested without a deck param.
   const decks = [
@@ -138,11 +156,14 @@ async function syncDeckPages_(sourceUrl: string, token: string): Promise<number>
     { key: 'nyc', param: '&deck=nyc' },
   ];
 
-  let total = 0;
+  let pages = 0;
+  const partialDecks: string[] = [];
   for (const deck of decks) {
-    total += await syncOneDeck_(sourceUrl, token, deck.key, deck.param);
+    const result = await syncOneDeck_(sourceUrl, token, deck.key, deck.param);
+    pages += result.pages;
+    if (result.partial) partialDecks.push(deck.key);
   }
-  return total;
+  return { pages, partialDecks };
 }
 
 async function syncOneDeck_(
@@ -150,13 +171,20 @@ async function syncOneDeck_(
   token: string,
   deckKey: string,
   param: string
-): Promise<number> {
+): Promise<{ pages: number; partial: boolean }> {
   try {
     const res = await fetch(
       `${sourceUrl}?action=deckPages&token=${encodeURIComponent(token)}${param}`
     );
     const body = await res.json();
-    if (body.error || !Array.isArray(body.pages)) return 0;
+    if (body.error || !Array.isArray(body.pages)) return { pages: 0, partial: true };
+
+    // What's already stored, to tell a deck that genuinely lost slides from a
+    // run that simply couldn't render them all.
+    const { count: existing } = await supabase
+      .from('deck_pages')
+      .select('*', { count: 'exact', head: true })
+      .eq('deck_key', deckKey);
 
     const rows: {
       deck_key: string;
@@ -180,32 +208,46 @@ async function syncOneDeck_(
         });
       }
     }
-    if (!rows.length) return 0;
+    if (!rows.length) return { pages: 0, partial: true };
 
     await supabase.from('deck_pages').upsert(rows, { onConflict: 'deck_key,page_index' });
-    // Slides removed from that deck would otherwise linger as pages forever.
-    await supabase
-      .from('deck_pages')
-      .delete()
-      .eq('deck_key', deckKey)
-      .gt('page_index', rows.length);
-    return rows.length;
+
+    // Slides removed from that deck would otherwise linger as pages forever —
+    // but only prune when this run rendered at least as much as is already
+    // stored. A quota-shortened run would otherwise delete the tail of a deck
+    // that is still perfectly intact, and the next short run would take more.
+    const partial = rows.length < (existing ?? 0);
+    if (!partial) {
+      await supabase
+        .from('deck_pages')
+        .delete()
+        .eq('deck_key', deckKey)
+        .gt('page_index', rows.length);
+    }
+    return { pages: rows.length, partial };
   } catch {
-    return 0;
+    return { pages: 0, partial: true };
   }
 }
 
-// Most cards put their bullet lines in their own text box, which the indexer
-// reads correctly. A slide that instead types them into the body box — each
-// line led by an arrow glyph rather than set as its own paragraph — comes back
-// as one run-on description with no bullets, and the tier chip gets read as
-// the only bullet. That's an authoring slip on the individual slide, and the
-// deck is where it should be fixed; this just means one mis-formatted slide
-// degrades to a tidy card instead of a broken one. Healthy rows pass through
-// untouched.
+// When a card's text boxes are grouped on the slide, the indexer can't see
+// them individually — Slides doesn't hand back a group's children unless you
+// recurse into it — so it flattens the group into one run-on description,
+// leaving the arrow glyphs typed on the slide as the only surviving structure,
+// and reads some other shape as the bullets. Ungrouping the slide (or teaching
+// the indexer to recurse) is the real fix; this reverses the flattening so a
+// grouped slide degrades to a tidy card rather than a broken one. Cards whose
+// boxes are already separate pass through untouched.
 
 /** Arrow/dot used as a list marker: padded by space, not inline punctuation. */
 const BULLET_MARKER = /\s*[\u2794\u2192\u279c\u25ba\u25b8\u00bb\u2022]\s+/;
+
+// A card's own section headings belong to the slide's layout, not to its copy.
+// When the whole card comes across as one run of text they ride along with it,
+// and would otherwise be tacked onto the end of the blurb or stand as a bullet.
+const SECTION_LABELS = /what[\u2019'\u02bc]?s\s+included|availability/;
+const TRAILING_LABEL = new RegExp(`\\s*(?:${SECTION_LABELS.source})\\s*:?\\s*$`, 'i');
+const ONLY_LABEL = new RegExp(`^(?:${SECTION_LABELS.source})\\s*:?$`, 'i');
 
 /** Loose key for comparing two bits of copy — case and punctuation aside. */
 function copyKey_(text: string): string {
@@ -230,20 +272,24 @@ function normalizeCopy_(row: SyncRow): { description: string; bullets: string[] 
   const parts = splitOnMarkers_((row.description ?? '').trim());
 
   // Whatever precedes the first marker is the blurb; the rest are bullets that
-  // never made it out of it.
-  const description = parts.shift() ?? '';
+  // never made it out of it. The blurb keeps the "WHAT'S INCLUDED" heading that
+  // sat between the two, so drop it.
+  const description = (parts.shift() ?? '').replace(TRAILING_LABEL, '').trim();
 
   // The tier and the title already head the card, so a bullet repeating either
   // is the indexer having grabbed the wrong text box.
   const echoes = new Set([row.tier ?? '', row.label ?? ''].map(copyKey_).filter(Boolean));
 
+  // Incoming bullets get split too. A soft line break inside one paragraph
+  // (Shift+Enter on the slide, which Slides stores as a vertical tab rather
+  // than a paragraph break) arrives as two arrow-led lines in a single bullet,
+  // and would otherwise render as one run-on item.
   const bullets: string[] = [];
   const seen = new Set<string>();
-  for (const raw of [...parts, ...(row.bullets ?? [])]) {
-    // A bullet that carried its own marker across would render with two.
-    const text = raw.replace(BULLET_MARKER, '').trim();
+  for (const raw of [...parts, ...(row.bullets ?? []).flatMap((b) => splitOnMarkers_(b))]) {
+    const text = raw.replace(TRAILING_LABEL, '').trim();
     const key = copyKey_(text);
-    if (!key || echoes.has(key) || seen.has(key)) continue;
+    if (!key || ONLY_LABEL.test(text) || echoes.has(key) || seen.has(key)) continue;
     seen.add(key);
     bullets.push(text);
   }
