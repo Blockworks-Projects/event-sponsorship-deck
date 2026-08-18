@@ -84,14 +84,15 @@ export async function POST(req: NextRequest) {
   for (const row of rows) {
     try {
       const images = await rehostImages_(row.id, row.imageUrls ?? []);
+      const { description, bullets } = normalizeCopy_(row);
 
       const { error } = await supabase.from('sponsorship_modules').upsert(
         {
           google_slide_id: row.id,
           title: row.label,
           subtitle: null,
-          description: row.description || null,
-          bullets: row.bullets ?? [],
+          description: description || null,
+          bullets,
           images,
           availability: row.availabilityMap ?? {},
           pricing: row.pricing ?? {},
@@ -192,6 +193,62 @@ async function syncOneDeck_(
   } catch {
     return 0;
   }
+}
+
+// Most cards put their bullet lines in their own text box, which the indexer
+// reads correctly. A slide that instead types them into the body box — each
+// line led by an arrow glyph rather than set as its own paragraph — comes back
+// as one run-on description with no bullets, and the tier chip gets read as
+// the only bullet. That's an authoring slip on the individual slide, and the
+// deck is where it should be fixed; this just means one mis-formatted slide
+// degrades to a tidy card instead of a broken one. Healthy rows pass through
+// untouched.
+
+/** Arrow/dot used as a list marker: padded by space, not inline punctuation. */
+const BULLET_MARKER = /\s*[\u2794\u2192\u279c\u25ba\u25b8\u00bb\u2022]\s+/;
+
+/** Loose key for comparing two bits of copy — case and punctuation aside. */
+function copyKey_(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** The blurb, then any bullet lines trapped behind a marker inside it. */
+function splitOnMarkers_(description: string): string[] {
+  const markers = description.match(new RegExp(BULLET_MARKER, 'g')) ?? [];
+  // A plain "→" reads as prose punctuation ("awareness → consideration") as
+  // readily as a list marker, so on its own it isn't enough to split on. Every
+  // other glyph above only ever appears as a bullet.
+  if (markers.length === 1 && markers[0].includes('\u2192')) return [description];
+
+  return description
+    .split(BULLET_MARKER)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function normalizeCopy_(row: SyncRow): { description: string; bullets: string[] } {
+  const parts = splitOnMarkers_((row.description ?? '').trim());
+
+  // Whatever precedes the first marker is the blurb; the rest are bullets that
+  // never made it out of it.
+  const description = parts.shift() ?? '';
+
+  // The tier and the title already head the card, so a bullet repeating either
+  // is the indexer having grabbed the wrong text box.
+  const echoes = new Set([row.tier ?? '', row.label ?? ''].map(copyKey_).filter(Boolean));
+
+  const bullets: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...parts, ...(row.bullets ?? [])]) {
+    // A bullet that carried its own marker across would render with two.
+    const text = raw.replace(BULLET_MARKER, '').trim();
+    const key = copyKey_(text);
+    if (!key || echoes.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    bullets.push(text);
+  }
+
+  return { description, bullets };
 }
 
 async function ensureImageBucket_() {
