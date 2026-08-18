@@ -7,6 +7,7 @@ import { TierIncluded, PriceBreakdown } from '@/components/tier-summary';
 import { TierGrid } from '@/components/tier-grid';
 import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
+import { NoteText } from '@/components/note-text';
 import type { Deck } from '@/components/public-deck-view';
 import { KIOSK } from '@/lib/kiosk';
 import { optimized } from '@/lib/image';
@@ -597,7 +598,7 @@ export function ProposalView({
         <section className="pdf-block mx-auto max-w-6xl px-10 pb-4">
           <div className="border-l-2 pl-6" style={{ borderColor: accent }}>
             <p className="max-w-2xl text-lg leading-relaxed text-neutral-700">
-              {proposal.intro_note}
+              <NoteText text={proposal.intro_note} accent={accent} />
             </p>
             {proposal.created_by && (
               <p className="mt-3 text-sm text-neutral-500">

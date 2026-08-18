@@ -1673,7 +1673,10 @@ export function ProposalForm({
                 </Fieldset>
               )}
 
-              <Fieldset label="Note to the sponsor">
+              <Fieldset
+                label="Note to the sponsor"
+                hint="Paste a URL to link it, or write [label](https://…) to link words."
+              >
                 <textarea
                   value={introNote}
                   onChange={(e) => setIntroNote(e.target.value)}
