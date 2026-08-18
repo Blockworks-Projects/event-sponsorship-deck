@@ -81,19 +81,31 @@ export async function POST(req: NextRequest) {
 
   const results: { id: string; ok: boolean; error?: string }[] = [];
 
+  // What's already stored, so a row that comes back thin can't blank a good
+  // one. A card whose slide stacks its AVAILABILITY label above WHAT'S INCLUDED
+  // returns no bullets at all, and a render that hit the quota returns no
+  // images — neither is the deck saying "this card has none", so neither should
+  // overwrite content that is already correct. It also means a row repaired by
+  // hand stays repaired instead of being wiped on the next sync.
+  const { data: storedRows } = await supabase
+    .from('sponsorship_modules')
+    .select('google_slide_id, description, bullets, images');
+  const stored = new Map((storedRows ?? []).map((r) => [r.google_slide_id, r]));
+
   for (const row of rows) {
     try {
       const images = await rehostImages_(row.id, row.imageUrls ?? []);
       const { description, bullets } = normalizeCopy_(row);
+      const prev = stored.get(row.id);
 
       const { error } = await supabase.from('sponsorship_modules').upsert(
         {
           google_slide_id: row.id,
           title: row.label,
           subtitle: null,
-          description: description || null,
-          bullets,
-          images,
+          description: description || prev?.description || null,
+          bullets: bullets.length ? bullets : ((prev?.bullets as string[]) ?? []),
+          images: images.length ? images : ((prev?.images as string[]) ?? []),
           availability: row.availabilityMap ?? {},
           pricing: row.pricing ?? {},
           tier_rows: row.tierRows ?? [],
@@ -122,10 +134,7 @@ export async function POST(req: NextRequest) {
   // the catalog holds against what this run returned is the only way that
   // shows up — otherwise a half-finished sync reports as a clean one and the
   // stale cards look like a formatting bug.
-  const { count: stored } = await supabase
-    .from('sponsorship_modules')
-    .select('*', { count: 'exact', head: true });
-  const notReturned = Math.max(0, (stored ?? 0) - rows.length);
+  const notReturned = Math.max(0, stored.size - rows.length);
 
   const failed = results.filter((r) => !r.ok);
   return NextResponse.json({
@@ -246,6 +255,11 @@ const BULLET_MARKER = /\s*[\u2794\u2192\u279c\u25ba\u25b8\u00bb\u2022]\s+/;
 // When the whole card comes across as one run of text they ride along with it,
 // and would otherwise be tacked onto the end of the blurb or stand as a bullet.
 const SECTION_LABELS = /what[\u2019'\u02bc]?s\s+included|availability/;
+// The indexer reads a card's bullets as everything between the WHAT'S INCLUDED
+// label and the AVAILABILITY label. When a slide stacks the AVAILABILITY label
+// last, the city and status chips fall inside that range and arrive as bullets.
+const AVAILABILITY_CHIP =
+  /^(?:new york|london|asia|both)(?:\s*[\u00b7·-].*)?$|^(?:\d+\s+)?(?:available|on hold|slots?)$|^track\s+\d+$/i;
 const TRAILING_LABEL = new RegExp(`\\s*(?:${SECTION_LABELS.source})\\s*:?\\s*$`, 'i');
 const ONLY_LABEL = new RegExp(`^(?:${SECTION_LABELS.source})\\s*:?$`, 'i');
 
@@ -289,7 +303,8 @@ function normalizeCopy_(row: SyncRow): { description: string; bullets: string[] 
   for (const raw of [...parts, ...(row.bullets ?? []).flatMap((b) => splitOnMarkers_(b))]) {
     const text = raw.replace(TRAILING_LABEL, '').trim();
     const key = copyKey_(text);
-    if (!key || ONLY_LABEL.test(text) || echoes.has(key) || seen.has(key)) continue;
+    if (!key || ONLY_LABEL.test(text) || AVAILABILITY_CHIP.test(text)) continue;
+    if (echoes.has(key) || seen.has(key)) continue;
     seen.add(key);
     bullets.push(text);
   }
