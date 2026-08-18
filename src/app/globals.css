@@ -317,7 +317,12 @@
 .benefit > summary::marker { content: ''; }
 @media print {
   .benefit:not([open]) > *:not(summary) { display: block; }
-  .benefit > summary > dt > span { display: none; }
+  /* Hide the chevron itself — every row is forced open above, so it points at
+     nothing on paper. Matched on aria-hidden rather than on the nesting: the
+     single-tier block wraps it in a <dt> and the all-tiers grid doesn't, and
+     a selector written for one of them silently leaves the other's arrows in
+     the PDF. */
+  .benefit > summary [aria-hidden] { display: none; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

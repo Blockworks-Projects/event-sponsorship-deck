@@ -16,7 +16,7 @@ import type { Proposal, SponsorshipModule } from '@/lib/types';
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
   asia: { venue: 'Marina Bay Sands, Singapore', dates: 'October 7, 2026' },
   london: { venue: 'Hilton Park Lane, London', dates: 'November 10-11, 2026' },
-  nyc: { venue: 'New York', dates: 'TBD' },
+  nyc: { venue: 'Javits Center North, New York', dates: 'March 30 – April 1, 2027' },
 };
 
 /** How each event is named in prose. Not the venue city — Asia's venue is in
