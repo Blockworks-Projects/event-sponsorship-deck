@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { parsePrice } from '@/lib/pricing';
 import { DeleteProposalButton } from '@/components/delete-proposal-button';
-import { eventLabel, eventSwatch } from '@/lib/events';
+import { EVENT_LABEL, eventLabel, eventChipStyle } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,7 +176,7 @@ export default async function BuilderHomePage({
                         multi-city deal shows a band per city. */}
                     <span
                       className="bx-ev"
-                      style={{ '--bx-e': eventSwatch(p.event) } as React.CSSProperties}
+                      style={eventChipStyle(p.event)}
                     >
                       {eventLabel(p.event) || p.event || '—'}
                     </span>

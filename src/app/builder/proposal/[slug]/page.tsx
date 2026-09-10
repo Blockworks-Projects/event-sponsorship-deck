@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ViewedAt } from '@/components/viewed-at';
 import type { SponsorshipModule } from '@/lib/types';
-import { eventLabel, eventSwatch } from '@/lib/events';
+import { eventLabel, eventChipStyle } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +65,7 @@ export default async function BuilderProposalPage({
               // multi-city deal shows a band per city.
               <span
                 className="bx-ev"
-                style={{ '--bx-e': eventSwatch(proposal.event) } as React.CSSProperties}
+                style={eventChipStyle(proposal.event)}
               >
                 {eventLabel(proposal.event) || proposal.event}
               </span>

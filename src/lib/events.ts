@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 // The DAS cities, and how a proposal names the ones it covers.
 //
 // A proposal's `event` is one city ('london'), or several joined with '+' in
@@ -70,7 +72,7 @@ export function eventProse(event?: string | null): string {
 
 /** The swatch on an event chip: the city's colour, or one band per city on a
  *  multi-city deal, in the same chronological order. */
-export function eventSwatch(event?: string | null): string {
+function eventSwatch(event?: string | null): string {
   const colors = eventsOf(event).map((key) => `var(--bx-${key})`);
   if (!colors.length) return 'var(--bx-faint)';
   if (colors.length === 1) return colors[0];
@@ -79,4 +81,11 @@ export function eventSwatch(event?: string | null): string {
       `${color} ${((i / colors.length) * 100).toFixed(2)}% ${(((i + 1) / colors.length) * 100).toFixed(2)}%`
   );
   return `linear-gradient(90deg, ${stops.join(', ')})`;
+}
+
+/** The `style` for an event chip — its swatch, as the custom property the
+ *  chip's CSS reads. One helper, because a CSS custom property has to be
+ *  asserted past React's style type and that is worth doing in a single place. */
+export function eventChipStyle(event?: string | null): CSSProperties {
+  return { '--bx-e': eventSwatch(event) } as CSSProperties;
 }
