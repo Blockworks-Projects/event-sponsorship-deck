@@ -375,12 +375,25 @@ export function ProposalForm({
   // wanted one — so "Event App" finds "Event App Sponsor" without "Livestream
   // Sponsor" swallowing "Rollup TV Livestream Sponsor".
   const normalizeTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  /** Below this, a card title is too generic to match by prefix — "Ad" or
+   *  "App" would otherwise claim the first item that starts that way. */
+  const MIN_PREFIX = 6;
   const moduleForLabel = (eventKey: string, label: string) => {
     const want = normalizeTitle(label);
     const pool = activationsForEvent(eventKey);
     return (
       pool.find((m) => normalizeTitle(m.title) === want) ??
       pool.find((m) => normalizeTitle(m.title).startsWith(want)) ??
+      // And the other way round: a deck card named more briefly than the price
+      // list names it — a card called "LED Screen" for the item "LED Screen
+      // Ad". Longest title first, so the most specific card wins where two
+      // could both claim the item.
+      [...pool]
+        .sort((a, b) => normalizeTitle(b.title).length - normalizeTitle(a.title).length)
+        .find((m) => {
+          const title = normalizeTitle(m.title);
+          return title.length >= MIN_PREFIX && want.startsWith(title);
+        }) ??
       undefined
     );
   };
@@ -1184,6 +1197,19 @@ export function ProposalForm({
                       {brandingPicked.map((i) => (
                         <div key={i.key} className="flex items-center gap-3 text-sm">
                           <span className="flex-1 text-neutral-300">{i.label}</span>
+                          {/* An item with no matching card in the synced deck
+                              still gets priced and still shows on the
+                              investment table — it just has no slide to show,
+                              which until now happened silently. The fix is to
+                              make the label match the deck's own card title. */}
+                          {!moduleForLabel(eventKey, i.label) && (
+                            <span
+                              className="text-xs text-amber-400"
+                              title={`No activation card in the ${EVENT_LABEL[eventKey] ?? eventKey} deck matches "${i.label}". The proposal will price it with no image.`}
+                            >
+                              No card in deck
+                            </span>
+                          )}
                           <span className="text-neutral-500">{formatPrice(i.price)}</span>
                           <button
                             type="button"
