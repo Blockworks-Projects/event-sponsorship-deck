@@ -110,6 +110,10 @@ export interface Proposal {
         qty?: number | null;
       }[]
     | null;
+  /** What an à la carte city says under "Tier" on the cover, keyed by event.
+   *  A city sold item by item has no tier, so the rep names the package
+   *  themselves; absent leaves the dash a tier would otherwise fill. */
+  a_la_carte_labels: Record<string, string> | null;
   include_kiosk: boolean | null;
   content_session: ContentSession | null; // legacy single session
   content_sessions: ContentSession[] | null;

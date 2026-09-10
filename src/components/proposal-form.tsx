@@ -207,6 +207,12 @@ export function ProposalForm({
         .map((line) => [menuKey(line.event, line.key), true])
     )
   );
+  // What each à la carte city says under "Tier" on the cover. A city sold item
+  // by item has no tier, so the rep names the package themselves — "Custom
+  // Package", "Track Stage Partner" — and left blank the card keeps its dash.
+  const [menuLabels, setMenuLabels] = useState<Record<string, string>>(
+    existing?.a_la_carte_labels ?? {}
+  );
   // A package (tier) city includes one activation; any others the sponsor picks
   // are charged at their à la carte price. This records which picked activation
   // is the included (free) one, per event — defaulting to the first picked.
@@ -892,6 +898,14 @@ export function ProposalForm({
           discountAmount:
             discountMode === 'amount' && discountValue > 0 ? Number(discountInput) : undefined,
           aLaCarte: onMenu ? menuLines : undefined,
+          // Only the cities still sold à la carte: a city switched back to a
+          // tier leaves its typed line behind in state so switching again
+          // restores it, and it must not reach the saved quote.
+          aLaCarteLabels: menuScope.reduce<Record<string, string>>((acc, key) => {
+            const label = (menuLabels[key] ?? '').trim();
+            if (label) acc[key] = label;
+            return acc;
+          }, {}),
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
           includeKiosk,
@@ -1127,6 +1141,24 @@ export function ProposalForm({
                   </span>
                   <span className="rule" />
                 </div>
+
+                {/* Names the package on the cover, where a tier city shows its
+                    tier. Free text: it's the sponsor's word for the deal, not
+                    anything the catalogue knows about. */}
+                <Fieldset
+                  label="Tier line"
+                  hint="Shown under Tier on the cover. Left blank it stays a dash."
+                  stackHint
+                >
+                  <Input
+                    value={menuLabels[eventKey] ?? ''}
+                    onChange={(e) =>
+                      setMenuLabels((c) => ({ ...c, [eventKey]: e.target.value }))
+                    }
+                    placeholder="Custom Package"
+                    className="max-w-md"
+                  />
+                </Fieldset>
 
                 <Fieldset label="Activations" hint="Select what's included in this package." stackHint>
                   <select

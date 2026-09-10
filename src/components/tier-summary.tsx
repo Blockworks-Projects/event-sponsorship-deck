@@ -2,6 +2,7 @@
 // as a picture of the whole grid. An image can't be trimmed, and a proposal
 // should show what THIS sponsor is buying — not four columns of which three
 // are irrelevant.
+import { Fragment } from 'react';
 import { hidesKioskRow } from '@/lib/kiosk';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 import { describeDiscount, parsePrice, formatPrice } from '@/lib/pricing';
@@ -17,10 +18,13 @@ function BenefitRow({
   label,
   value,
   accent,
+  indent,
 }: {
   label: string;
   value: string;
   accent: string;
+  /** Set on a row that belongs to the city named in the row above it. */
+  indent?: boolean;
 }) {
   // A tick on the source table just means "yes".
   const shown = value === '✔' ? 'Included' : value;
@@ -28,7 +32,7 @@ function BenefitRow({
 
   if (!copy) {
     return (
-      <div className="flex justify-between gap-6 py-2">
+      <div className={`flex justify-between gap-6 py-2 ${indent ? 'pl-4' : ''}`}>
         <dt className="text-sm text-neutral-700">{label}</dt>
         <dd className="text-sm font-semibold text-neutral-900">{shown}</dd>
       </div>
@@ -37,7 +41,11 @@ function BenefitRow({
 
   return (
     <details className="benefit group py-1">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-1.5">
+      <summary
+        className={`flex cursor-pointer list-none items-center justify-between gap-6 py-1.5 ${
+          indent ? 'pl-4' : ''
+        }`}
+      >
         <dt className="flex items-center gap-2 text-sm text-neutral-700">
           <span
             className="inline-block transition-transform group-open:rotate-90"
@@ -168,6 +176,9 @@ export function PriceBreakdown({
   // is no list price to strike through — nothing was discounted, the items
   // simply cost what they cost.
   const menu = proposal.a_la_carte ?? [];
+  /** The à la carte cities, in the order the quote lists them — chronological,
+   *  as the builder writes the lines. Each gets its own block below. */
+  const menuEvents = [...new Set(menu.map((item) => item.event))];
   const EVENT_LABEL: Record<string, string> = {
     london: 'London',
     asia: 'Asia',
@@ -196,77 +207,105 @@ export function PriceBreakdown({
             ))}
           {menu.length > 0 ? (
             <>
-              {/* The bundle price first, like a package. */}
-              {menu
-                .filter((item) => item.key === 'ala-package')
-                .map((item) => (
-                  <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
-                    <dt className="text-sm text-neutral-700">
-                      {EVENT_LABEL[item.event] ?? item.event} · {item.label}
-                    </dt>
-                    <dd className="text-sm font-semibold text-neutral-900">
-                      {item.price ? formatPrice(parsePrice(item.price) ?? 0) : '—'}
-                    </dd>
-                  </div>
-                ))}
+              {/* One block per city: its package price, then what that package
+                  carries. Grouped by city rather than by kind of line — read
+                  the other way round, a two-city deal lists every package,
+                  then every inclusion, then every session, and neither city's
+                  figures add up to anything the sponsor can follow.
 
-              {/* What the bundle includes — the same expandable rows the tier
-                  list uses, so each carries its explanation. Only the benefits
-                  the rep added on: they carry no price of their own. */}
-              {menu
-                .filter((item) => item.key !== 'ala-package' && item.qty == null && !item.price)
-                .map((item) => (
-                  <BenefitRow
-                    key={`${item.event}|${item.key}`}
-                    label={item.label}
-                    value="Included"
-                    accent={accent}
-                  />
-                ))}
+                  Rows stay direct children of the <dl> so the dividers still
+                  fall between rows; the group reads as a group because its
+                  city heading carries the price and its items are indented
+                  under it, which also spares them repeating the city name. */}
+              {menuEvents.map((eventKey, groupIndex) => {
+                const forEvent = menu.filter((item) => item.event === eventKey);
+                const pkg = forEvent.find((item) => item.key === 'ala-package');
+                const inclusions = forEvent.filter(
+                  (item) => item.key !== 'ala-package' && item.qty == null && !item.price
+                );
+                const passes = forEvent.filter((item) => item.qty != null);
+                const addOns = forEvent.filter(
+                  (item) => item.key !== 'ala-package' && item.qty == null && item.price
+                );
+                // Air above every group but the first, so the cities separate
+                // at a glance without a heading row of their own.
+                const head = groupIndex > 0 ? 'pt-7' : '';
+                const city = EVENT_LABEL[eventKey] ?? eventKey;
 
-              {/* Passes, charged by the count. A proposal quoted before passes
-                  were charged carries no price on its pass lines, so it still
-                  reads as part of the bundle. */}
-              {menu
-                .filter((item) => item.qty != null)
-                .map((item) => {
-                  const passes = `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}`;
-                  if (!item.price) {
-                    return (
+                return (
+                  <Fragment key={eventKey}>
+                    {/* The city's own heading, and the bundle price it heads.
+                        A city priced entirely through its items carries no
+                        package line, so the heading stands on its own. */}
+                    <div className={`flex justify-between gap-6 py-3 ${head}`}>
+                      <dt className="text-sm font-semibold text-neutral-900">
+                        {pkg ? `${city} · ${pkg.label}` : city}
+                      </dt>
+                      <dd className="text-sm font-semibold text-neutral-900">
+                        {pkg?.price ? formatPrice(parsePrice(pkg.price) ?? 0) : ''}
+                      </dd>
+                    </div>
+
+                    {/* What the bundle includes — the same expandable rows the
+                        tier list uses, so each carries its explanation. Only
+                        the benefits the rep added on: they carry no price. */}
+                    {inclusions.map((item) => (
                       <BenefitRow
                         key={`${item.event}|${item.key}`}
                         label={item.label}
-                        value={passes}
+                        value="Included"
                         accent={accent}
+                        indent
                       />
-                    );
-                  }
-                  return (
-                    <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
-                      <dt className="text-sm text-neutral-700">
-                        {EVENT_LABEL[item.event] ?? item.event} · {item.label}
-                        <span className="ml-2 text-neutral-500">{passes}</span>
-                      </dt>
-                      <dd className="text-sm font-semibold text-neutral-900">
-                        {formatPrice(parsePrice(item.price) ?? 0)}
-                      </dd>
-                    </div>
-                  );
-                })}
+                    ))}
 
-              {/* Priced add-ons — activations and speaking, each adding on. */}
-              {menu
-                .filter((item) => item.key !== 'ala-package' && item.qty == null && item.price)
-                .map((item) => (
-                  <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
-                    <dt className="text-sm text-neutral-700">
-                      {EVENT_LABEL[item.event] ?? item.event} · {item.label}
-                    </dt>
-                    <dd className="text-sm font-semibold text-neutral-900">
-                      {formatPrice(parsePrice(item.price) ?? 0)}
-                    </dd>
-                  </div>
-                ))}
+                    {/* Passes: charged by the count, or bundled into the
+                        package price, in which case the line carries none — as
+                        does a proposal quoted before passes were charged. */}
+                    {passes.map((item) => {
+                      const count = `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}`;
+                      if (!item.price) {
+                        return (
+                          <BenefitRow
+                            key={`${item.event}|${item.key}`}
+                            label={item.label}
+                            value={count}
+                            accent={accent}
+                            indent
+                          />
+                        );
+                      }
+                      return (
+                        <div
+                          key={`${item.event}|${item.key}`}
+                          className="flex justify-between gap-6 py-3 pl-4"
+                        >
+                          <dt className="text-sm text-neutral-700">
+                            {item.label}
+                            <span className="ml-2 text-neutral-500">{count}</span>
+                          </dt>
+                          <dd className="text-sm font-semibold text-neutral-900">
+                            {formatPrice(parsePrice(item.price) ?? 0)}
+                          </dd>
+                        </div>
+                      );
+                    })}
+
+                    {/* Priced add-ons — activations and speaking, each adding on. */}
+                    {addOns.map((item) => (
+                      <div
+                        key={`${item.event}|${item.key}`}
+                        className="flex justify-between gap-6 py-3 pl-4"
+                      >
+                        <dt className="text-sm text-neutral-700">{item.label}</dt>
+                        <dd className="text-sm font-semibold text-neutral-900">
+                          {formatPrice(parsePrice(item.price) ?? 0)}
+                        </dd>
+                      </div>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </>
           ) : perEvent
             ? lines.map((line) => (

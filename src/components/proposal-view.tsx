@@ -194,6 +194,12 @@ export function ProposalView({
   // Which events were sold à la carte — those activations are all bought, so
   // they never carry the "pick one" note that a tier's options do.
   const menuEvents = new Set(menu.map((line) => line.event));
+  /** The rep's name for the package on a single-city à la carte deal, shown
+   *  where a tier would be. Read by city rather than off the proposal, since
+   *  the labels are keyed the same way the items are. */
+  const aLaCarteLabel = cities
+    .map((key) => proposal.a_la_carte_labels?.[key])
+    .find((label) => Boolean(label));
 
   const gateMultiEvent = isMultiEvent(proposal.event);
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
@@ -481,7 +487,13 @@ export function ProposalView({
                       </div>
                       <div>
                         <dt className="inline font-semibold">Tier: </dt>
-                        <dd className="inline text-neutral-600">{proposal.tiers?.[key] ?? '—'}</dd>
+                        {/* A city sold à la carte has no tier, so it shows the
+                            line the rep typed for it instead. */}
+                        <dd className="inline text-neutral-600">
+                          {proposal.tiers?.[key] ||
+                            proposal.a_la_carte_labels?.[key] ||
+                            '—'}
+                        </dd>
                       </div>
                     </dl>
                   </div>
@@ -521,6 +533,9 @@ export function ProposalView({
                 </>
               )}
               {proposal.tier && !onMenu && <HeroStat label="Tier" value={proposal.tier} />}
+              {/* Sold à la carte there is no tier — the rep's own name for the
+                  package stands in its place, when they gave it one. */}
+              {onMenu && aLaCarteLabel && <HeroStat label="Tier" value={aLaCarteLabel} />}
               {price && <HeroStat label="Investment" value={price} accent={accent} />}
             </dl>
           </div>

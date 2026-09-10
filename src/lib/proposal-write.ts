@@ -33,6 +33,8 @@ export interface ProposalInput {
   eventPrices?: Record<string, string>;
   /** Selling individual items instead of a tier. Each line carries its price. */
   aLaCarte?: MenuLine[];
+  /** What each à la carte city says under "Tier" on the cover, keyed by event. */
+  aLaCarteLabels?: Record<string, string>;
   logoUrl?: string;
   introNote?: string;
   includeKiosk?: boolean;
@@ -227,6 +229,10 @@ export async function proposalColumns(input: ProposalInput) {
     // city and items in the other, and the investment table needs both halves.
     price_lines: lines.length ? lines : null,
     a_la_carte: menu.length ? menu : null,
+    a_la_carte_labels:
+      input.aLaCarteLabels && Object.keys(input.aLaCarteLabels).length
+        ? input.aLaCarteLabels
+        : null,
     discounted_price: discounted,
     total_price: quoted,
     created_by: input.createdBy || null,
