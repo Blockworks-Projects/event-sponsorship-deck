@@ -1,8 +1,8 @@
 -- Base schema for the Proposal Platform, reconstructed from the app's
 -- TypeScript types (src/lib/types.ts) and its Supabase queries. Run this ONCE
 -- against a fresh Supabase project (SQL Editor → paste → Run). The migrations
--- 002/003/004 in this folder are already folded in here, so a brand-new
--- project only needs this file.
+-- 002/003/004 in this folder are already folded in here, as is 007's event
+-- constraint, so a brand-new project only needs this file.
 --
 -- Uses gen_random_uuid() (pgcrypto, enabled by default on Supabase).
 
@@ -40,7 +40,10 @@ create table if not exists proposals (
   company          text not null,
   contact_name     text,
   contact_email    text,
-  event            text,                   -- 'london' | 'nyc' | 'asia' | 'both'
+  -- One city ('london'), several joined with '+' in chronological order
+  -- ('london+nyc'), or 'both' — Asia + London's original spelling. Constrained
+  -- by migration 007, folded in below.
+  event            text,
   tier             text,
   tiers            jsonb,
   list_price       text,
@@ -53,6 +56,7 @@ create table if not exists proposals (
   price_lines      jsonb,
   event_discounts  jsonb,                  -- migration 003
   a_la_carte       jsonb,                  -- migration 004
+  a_la_carte_labels jsonb,                 -- migration 008
   include_kiosk    boolean,
   content_session  jsonb,                  -- legacy single session
   content_sessions jsonb,
@@ -61,7 +65,14 @@ create table if not exists proposals (
   created_by_name  text,
   status           text not null default 'draft', -- 'draft' | 'sent'
   created_at       timestamptz not null default now(),
-  updated_at       timestamptz not null default now()
+  updated_at       timestamptz not null default now(),
+  -- Migration 007: any combination of cities we know, in any order, plus
+  -- 'both'. A rule rather than a list, so a new pairing needs no migration.
+  constraint proposals_event_check check (
+    event is null
+    or event = 'both'
+    or string_to_array(event, '+') <@ array['asia', 'london', 'nyc']
+  )
 );
 
 -- ---------------------------------------------------------------------------
