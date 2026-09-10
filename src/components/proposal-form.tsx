@@ -363,12 +363,39 @@ export function ProposalForm({
   // region 'both' is the deck's shorthand for London + Asia (the 2026 cities),
   // never New York — unrelated to a proposal's scope. Used to find the card
   // behind a catalogue item and to price a package's extra activations.
+  //
+  // A card with no region at all is offered everywhere rather than nowhere: an
+  // unmarked slide is a gap in the sync, and hiding the card is the one
+  // outcome that helps nobody — it disappears from every city silently.
   const activationsForEvent = (eventKey: string) =>
     activations.filter((m) => {
       const region = (m.region || '').toLowerCase();
+      if (!region) return true;
       const bothApplies = region === 'both' && eventKey !== 'nyc';
       return region === eventKey || bothApplies;
     });
+
+  /** How a card's own region reads, for the builder's warning. */
+  const regionLabel = (region: string) => {
+    const key = (region || '').toLowerCase();
+    if (key === 'both') return 'London / Asia';
+    return EVENT_LABEL[key] ?? key;
+  };
+
+  /**
+   * The same card on another city's deck, when this city's deck has none.
+   *
+   * A card is matched to a catalogue item by title within the city that sells
+   * it, so an item priced for London whose card is tagged for New York finds
+   * nothing — and used to say nothing either. Naming the city it IS on turns
+   * that into something fixable: the region marker on the slide is wrong, or
+   * the card belongs on this city's deck too.
+   */
+  const moduleElsewhere = (eventKey: string, label: string) => {
+    const want = normalizeTitle(label);
+    const here = new Set(activationsForEvent(eventKey).map((m) => m.id));
+    return activations.find((m) => normalizeTitle(m.title) === want && !here.has(m.id));
+  };
 
   // Match a catalogue item (or a picked module) to the synced activation by
   // title. Exact normalised match first, then a title that starts with the
@@ -1194,20 +1221,27 @@ export function ProposalForm({
                   </select>
                   {brandingPicked.length > 0 && (
                     <div className="mt-3 space-y-1">
-                      {brandingPicked.map((i) => (
+                      {brandingPicked.map((i) => {
+                        // An item with no matching card still gets priced and
+                        // still shows on the investment table — it just has no
+                        // slide to show, which until now happened silently.
+                        const card = moduleForLabel(eventKey, i.label);
+                        const other = card ? undefined : moduleElsewhere(eventKey, i.label);
+                        return (
                         <div key={i.key} className="flex items-center gap-3 text-sm">
                           <span className="flex-1 text-neutral-300">{i.label}</span>
-                          {/* An item with no matching card in the synced deck
-                              still gets priced and still shows on the
-                              investment table — it just has no slide to show,
-                              which until now happened silently. The fix is to
-                              make the label match the deck's own card title. */}
-                          {!moduleForLabel(eventKey, i.label) && (
+                          {!card && (
                             <span
                               className="text-xs text-amber-400"
-                              title={`No activation card in the ${EVENT_LABEL[eventKey] ?? eventKey} deck matches "${i.label}". The proposal will price it with no image.`}
+                              title={
+                                other
+                                  ? `"${i.label}" is tagged ${regionLabel(other.region || '')} in the synced deck, so ${EVENT_LABEL[eventKey] ?? eventKey} can't show it. Fix the region marker on that slide, or add the card to this city's deck.`
+                                  : `No activation card in the ${EVENT_LABEL[eventKey] ?? eventKey} deck matches "${i.label}". The proposal will price it with no image.`
+                              }
                             >
-                              No card in deck
+                              {other
+                                ? `Card is ${regionLabel(other.region || '')} only`
+                                : 'No card in deck'}
                             </span>
                           )}
                           <span className="text-neutral-500">{formatPrice(i.price)}</span>
@@ -1220,7 +1254,8 @@ export function ProposalForm({
                             ✕
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </Fieldset>
