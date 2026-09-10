@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ProposalForm } from '@/components/proposal-form';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
+import { EVENT_KEYS } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,9 @@ export default async function EditProposalPage({
         modules={(modules ?? []) as SponsorshipModule[]}
         existing={proposal as Proposal}
         existingModuleIds={(links ?? []).map((l) => l.module_id)}
-        nycOnly={(proposal as Proposal).event === 'nyc'}
+        // Every city, whichever card the proposal was started from: editing is
+        // where a deal that grew a second city gets widened.
+        offers={EVENT_KEYS}
       />
     </div>
   );

@@ -4,19 +4,12 @@
 import { benefitCopy } from '@/lib/benefits';
 import { hidesKioskRow } from '@/lib/kiosk';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
+// Chronological, so the columns read in the order the events happen rather
+// than however the stored object's keys came out.
+import { EVENT_KEYS, EVENT_LABEL, EVENT_LOWER } from '@/lib/events';
 
 /** Cells that mean "this tier doesn't get it" on the source table. */
 const NOT_INCLUDED = /^[–—-]$/;
-
-const EVENT_LABEL: Record<string, string> = {
-  london: 'London',
-  asia: 'Asia',
-  nyc: 'New York',
-};
-
-// Chronological, so the columns read in the order the events happen rather
-// than however the stored object's keys came out.
-const EVENT_ORDER = ['asia', 'london', 'nyc'];
 
 // Same treatment the activation groups use, so a city looks the same
 // wherever it appears on the page.
@@ -52,7 +45,7 @@ export function TierGrid({
   const menu = proposal.a_la_carte ?? [];
 
   const columns: Column[] = Object.entries(tiers)
-    .sort(([a], [b]) => EVENT_ORDER.indexOf(a) - EVENT_ORDER.indexOf(b))
+    .sort(([a], [b]) => EVENT_KEYS.indexOf(a) - EVENT_KEYS.indexOf(b))
     .map(([event, tier]) => ({
       event,
       label: EVENT_LABEL[event] ?? event,
@@ -79,7 +72,7 @@ export function TierGrid({
         items,
       });
     }
-    columns.sort((a, b) => EVENT_ORDER.indexOf(a.event) - EVENT_ORDER.indexOf(b.event));
+    columns.sort((a, b) => EVENT_KEYS.indexOf(a.event) - EVENT_KEYS.indexOf(b.event));
   }
 
   if (columns.length < 2) return null;
@@ -135,7 +128,7 @@ export function TierGrid({
                     className="text-lg font-bold lowercase tracking-[0.35em]"
                     style={{ color: EVENT_ACCENT[column.event] }}
                   >
-                    {column.event === 'nyc' ? 'new york' : column.event}
+                    {EVENT_LOWER[column.event] ?? column.event}
                   </div>
                   <div className="mt-1 text-xs font-semibold uppercase tracking-widest text-neutral-500">
                     {column.tier}

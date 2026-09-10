@@ -18,6 +18,14 @@ import {
   type MenuLine,
 } from '@/lib/a-la-carte';
 import { hidesKioskRow } from '@/lib/kiosk';
+import {
+  EVENT_KEYS,
+  EVENT_LABEL,
+  EVENT_LOWER,
+  eventKeyFor,
+  eventProse,
+  eventsOf,
+} from '@/lib/events';
 
 /** Cells that mean "this tier doesn't get it" on the source tier table. */
 const NOT_INCLUDED = /^[–—-]$/;
@@ -45,18 +53,9 @@ const tierRank = (t: string) => {
   const i = TIERS.findIndex((x) => x.toLowerCase() === t.toLowerCase());
   return i === -1 ? TIERS.length : i;
 };
-// Chronological: Asia is October, London is November.
-const EVENTS = [
-  { key: 'asia', label: 'Asia' },
-  { key: 'london', label: 'London' },
-];
-// New York is its own side of the builder: not part of the Asia/London "both"
-// flow, but a single-event proposal can be for it — so it joins the list used
-// to resolve one event's tiers and activations.
-const NYC_EVENT = { key: 'nyc', label: 'New York' };
-const ALL_EVENTS = [...EVENTS, NYC_EVENT];
-
-type EventFilter = 'london' | 'asia' | 'both' | 'nyc';
+/** The cities a side of the builder sells when it doesn't say otherwise — the
+ *  DAS 2026 pair. The New York and multi-city pages pass their own. */
+const DEFAULT_OFFERS = ['asia', 'london'];
 
 const STEPS = ['Scope', 'Package', 'Add-ons', 'Content', 'Sponsor'];
 
@@ -65,7 +64,7 @@ export function ProposalForm({
   existing,
   existingModuleIds,
   signedInAs,
-  nycOnly,
+  offers,
 }: {
   modules: SponsorshipModule[];
   /** The signed-in rep, used to prefill their own details. */
@@ -73,10 +72,12 @@ export function ProposalForm({
   /** Present when editing rather than creating. */
   existing?: Proposal;
   existingModuleIds?: string[];
-  /** The New York side: the event is fixed to NYC and the Asia/London/Both
-   *  picker never appears. À la carte isn't offered — NYC has no price list, so
-   *  it is package-only. */
-  nycOnly?: boolean;
+  /** The cities this side of the builder sells. One city fixes the event and
+   *  shows no picker (the New York page); several offer a multi-select, and
+   *  picking more than one makes it a multi-city proposal. Which cities sell à
+   *  la carte is a separate matter — New York has no price list, so it is
+   *  package-only wherever it appears. */
+  offers?: string[];
 }) {
   const router = useRouter();
   const editing = !!existing;
@@ -84,11 +85,21 @@ export function ProposalForm({
   // step, Sponsor).
   const [step, setStep] = useState(editing ? 4 : 0);
 
-  // Step 1 — what's being sold. These only narrow what step 2 offers; the
-  // proposal's own event and tier are set in step 3.
-  const [eventFilter, setEventFilter] = useState<EventFilter>(
-    (existing?.event as EventFilter) ?? (nycOnly ? 'nyc' : 'london')
-  );
+  // The cities on offer here, chronological whatever order the page listed
+  // them in. A single one is fixed rather than picked.
+  const offered = EVENT_KEYS.filter((key) => (offers ?? DEFAULT_OFFERS).includes(key));
+  const locked = offered.length === 1;
+
+  // Step 1 — which cities are being sold. More than one makes this a
+  // multi-city proposal, with its own tier (or à la carte basket) at each.
+  const [cities, setCities] = useState<string[]>(() => {
+    const already = eventsOf(existing?.event);
+    if (already.length) return already;
+    // London is the usual starting point; on a side that doesn't sell it,
+    // whichever city comes first.
+    return [offered.includes('london') ? 'london' : offered[0] ?? 'london'];
+  });
+  const event = eventKeyFor(cities);
 
   // Step 2
   // Keyed "event|moduleId": an activation offered at both cities is a
@@ -99,8 +110,8 @@ export function ProposalForm({
   const cartEvent = (key: string) => (key.includes('|') ? key.split('|')[0] : undefined);
 
   // Step 3 — an optional bespoke session, pulled from the agenda or typed.
-  // One optional session per event. A both-events proposal can carry one at
-  // each city, or just one; a single-event proposal has at most one.
+  // One optional session per event. A multi-city proposal can carry one at
+  // each city, or at just one; a single-event proposal has at most one.
   type Draft = { include: boolean; heading: string; description: string; title: string; sessionId: string; speakers: SessionSpeaker[] };
   const emptyDraft = (): Draft => ({ include: false, heading: '', description: '', title: '', sessionId: '', speakers: [] });
 
@@ -126,7 +137,7 @@ export function ProposalForm({
   const setDraft = (key: string, patch: Partial<Draft>) =>
     setDrafts((current) => ({ ...current, [key]: { ...draftFor(key), ...patch } }));
 
-  /** Agenda per event, since a both-events proposal needs both. */
+  /** Agenda per event, since a multi-city proposal needs one per city. */
   const [agendas, setAgendas] = useState<Record<string, { id: string; title: string; speakers: SessionSpeaker[] }[]>>({});
   const [agendaLoading, setAgendaLoading] = useState(false);
 
@@ -151,8 +162,8 @@ export function ProposalForm({
 
   /**
    * Selling a tier, or individual items. À la carte is offered at every event
-   * and decided per city: on a both-events proposal one city can be sold item
-   * by item while the other is on a tier, or both à la carte. Picks and prices
+   * and decided per city: on a multi-city proposal one city can be sold item
+   * by item while another is on a tier, or all à la carte. Picks and prices
    * are therefore keyed by "event|itemKey", the same shape the cart uses, so a
    * Meetup Zone bought for London is a separate line from one bought for Asia.
    */
@@ -241,10 +252,8 @@ export function ProposalForm({
   // London tiers include a kiosk, so yes is the default. Off simply drops
   // the section from the proposal.
   const [includeKiosk, setIncludeKiosk] = useState(existing?.include_kiosk !== false);
-  // Matches the eventFilter default, so the two can't start out of step.
-  const [event, setEvent] = useState<string>(existing?.event ?? (nycOnly ? 'nyc' : 'london'));
   const [sponsorTier, setSponsorTier] = useState(existing?.tier ?? '');
-  // Both-events proposals buy a tier at each, and they can differ.
+  // Multi-city proposals buy a tier at each, and they can differ.
   const [tiersByEvent, setTiersByEvent] = useState<Record<string, string>>(existing?.tiers ?? {});
   // ---- Checkout state. Pricing lives in a modal opened from the Sponsor step.
   const [showCheckout, setShowCheckout] = useState(false);
@@ -302,24 +311,22 @@ export function ProposalForm({
   }, [modules]);
 
   const scopeTiers = useMemo(() => {
-    const keys =
-      eventFilter === 'both'
-        ? EVENTS.flatMap((e) => tiersForEvent(e.key))
-        : tiersForEvent(eventFilter);
+    const keys = cities.flatMap((key) => tiersForEvent(key));
     // Before a sync has run there are no tables to read, so fall back to the
     // full list rather than showing no tiers at all.
     if (!keys.length) return TIERS;
     const available = new Set(keys.map((k) => k.toLowerCase()));
     return TIERS.filter((t) => available.has(t.toLowerCase()));
-  }, [tiersForEvent, eventFilter]);
+  }, [tiersForEvent, cities]);
   const activations = useMemo(
     () => modules.filter((m) => m.category === 'activation'),
     [modules]
   );
 
-  // Every activation a city sells, from the synced deck. "both" means London +
-  // Asia (the 2026 cities), never New York. Used to find the card behind a
-  // catalogue item and to price a package's extra activations.
+  // Every activation a city sells, from the synced deck. A module's own
+  // region 'both' is the deck's shorthand for London + Asia (the 2026 cities),
+  // never New York — unrelated to a proposal's scope. Used to find the card
+  // behind a catalogue item and to price a package's extra activations.
   const activationsForEvent = (eventKey: string) =>
     activations.filter((m) => {
       const region = (m.region || '').toLowerCase();
@@ -382,12 +389,13 @@ export function ProposalForm({
       .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
       .map((item) => item.key);
 
-  const bothEvents = event === 'both';
-  const scopedEvents = bothEvents ? EVENTS.map((e) => e.key) : event ? [event] : [];
+  const multiEvent = cities.length > 1;
+  const scopedEvents = cities;
 
   // À la carte is offered wherever an in-scope event sells it, and chosen per
-  // city (menuSel). On a both proposal either city can be item by item while
-  // the other is a tier, or both can be — which is how it's actually sold.
+  // city (menuSel). On a multi-city proposal one city can be item by item
+  // while another is a tier, or all of them can be — which is how it's
+  // actually sold.
   const menuOfferedEvents = scopedEvents.filter((key) => A_LA_CARTE_EVENTS.includes(key));
   const menuOffered = menuOfferedEvents.length > 0;
   /** The in-scope cities actually being sold à la carte. */
@@ -446,7 +454,7 @@ export function ProposalForm({
   };
 
   // ---- Package extras: a tier includes one activation; any others are charged.
-  const tierForEventNow = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
+  const tierForEventNow = (eventKey: string) => (multiEvent ? tiersByEvent[eventKey] : sponsorTier);
   /** The activations picked for one city, resolved to their modules. */
   const pickedActivationsForEvent = (eventKey: string): SponsorshipModule[] =>
     cart
@@ -529,7 +537,7 @@ export function ProposalForm({
    * wrongly claim there's no speaking slot.
    */
   const stageFor = (eventKey: string): '' | 'main' | 'track' => {
-    const tier = bothEvents ? tiersByEvent[eventKey] : sponsorTier;
+    const tier = multiEvent ? tiersByEvent[eventKey] : sponsorTier;
     const table = modules.find(
       (m) => m.category === 'tier-table' && (m.region || '').toLowerCase() === eventKey
     );
@@ -546,15 +554,15 @@ export function ProposalForm({
    * Until a tier is picked the step stays available: the tier can also be set
    * on the last step, which comes after this one, and hiding it on "not yet
    * decided" would take the option away before the rep had made the choice. */
-  const tierAt = (eventKey: string) => (bothEvents ? tiersByEvent[eventKey] : sponsorTier);
+  const tierAt = (eventKey: string) => (multiEvent ? tiersByEvent[eventKey] : sponsorTier);
   // Decided per event, so each city offers content on its own terms:
   //   - the à la carte event (Asia) offers one when a speaking item is picked;
   //   - a tier event offers one when its tier includes a speaking slot
   //     (Presenting or Diamond), or before a tier has been chosen at all.
-  // Per event rather than collapsing the whole à la carte case to a single
-  // 'both' session — otherwise a both proposal that mixes à la carte in one
-  // city with a speaking tier in the other only ever asked once, labelled
-  // "both", and the saved session belonged to neither city on the proposal.
+  // Per event rather than collapsing the whole à la carte case to one session
+  // for the whole proposal — otherwise a multi-city proposal that mixes à la
+  // carte in one city with a speaking tier in another only ever asked once,
+  // and the saved session belonged to no city on the proposal.
   // A speaking benefit added on the Add-ons step earns that event a content
   // proposal too, whichever way the event is sold.
   const addedSpeaking = (key: string) =>
@@ -690,16 +698,29 @@ export function ProposalForm({
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   }
 
-  /** Scoping to one event decides the proposal's event too — only "Both"
-   * leaves it genuinely open, so that's the only case step 3 has to ask. */
-  function chooseEventFilter(next: EventFilter) {
-    setEventFilter(next);
-    // 'both' is a proposal event in its own right now, not only a filter.
-    setEvent(next);
+  /** Add a city to the proposal, or take it off. The last one can't be taken
+   *  off — a proposal is always for at least one event. */
+  function toggleCity(key: string) {
+    const next = cities.includes(key)
+      ? cities.filter((k) => k !== key)
+      : EVENT_KEYS.filter((k) => k === key || cities.includes(k));
+    if (!next.length) return;
+    setCities(next);
 
-    // Drop the chosen tier if the new event doesn't sell it.
-    const keys =
-      next === 'both' ? EVENTS.flatMap((e) => tiersForEvent(e.key)) : tiersForEvent(next);
+    // A single city states its tier in `sponsorTier`, several state one each
+    // in `tiersByEvent`. Carry the choice across when the scope crosses that
+    // line, so adding a second city doesn't quietly clear the first's tier.
+    if (cities.length === 1 && next.length > 1 && sponsorTier) {
+      setTiersByEvent((current) => ({ [cities[0]]: sponsorTier, ...current }));
+    }
+    if (cities.length > 1 && next.length === 1 && tiersByEvent[next[0]]) {
+      setSponsorTier(tiersByEvent[next[0]]);
+    }
+
+    // Then drop the single-city tier if the new scope doesn't sell it. A city's
+    // own tier in `tiersByEvent` is left alone: adding the city back should
+    // bring its tier with it, and a city off the proposal is dropped on save.
+    const keys = next.flatMap((k) => tiersForEvent(k));
     if (keys.length) {
       const available = new Set(keys.map((k) => k.toLowerCase()));
       setSponsorTier((current) => (available.has(current.toLowerCase()) ? current : ''));
@@ -712,20 +733,20 @@ export function ProposalForm({
     // Autofill has put a rep's own address in here before now.
     if (/@/.test(company)) return setError('Company looks like an email address. Check the field.');
     // Every city sold à la carte needs at least one item (or some passes).
-    // Checked per city so a both proposal that's à la carte in one and a tier
-    // in the other reports the empty side by name.
+    // Checked per city so a proposal that's à la carte in one city and a tier
+    // in another reports the empty side by name.
     const menuEmpty = menuScope.filter(
       (key) => !menuPicksForEvent(key).length && !ticketLinesForEvent(key).length
     );
     if (menuEmpty.length) {
-      const where = bothEvents
-        ? ` for ${menuEmpty.map((k) => EVENTS.find((e) => e.key === k)?.label ?? k).join(' and ')}`
+      const where = multiEvent
+        ? ` for ${menuEmpty.map((k) => EVENT_LABEL[k] ?? k).join(' and ')}`
         : '';
       return setError(`Pick at least one item${where}.`);
     }
     // Gold is the one tier sold without activations, so it's the one case
     // where an empty proposal is legitimate. Checked per event, so a
-    // both-events proposal can be Gold in one city and not the other. À la
+    // multi-city proposal can be Gold in one city and not the other. À la
     // carte cities are excluded — they carry items, not activations.
     const eventsMissingActivations = scopedEvents.filter(
       (key) => !onMenuFor(key) && !cart.some((k) => cartEvent(k) === key)
@@ -734,8 +755,8 @@ export function ProposalForm({
       (key) => (tierAt(key) || '').toLowerCase() !== 'gold'
     );
     if (notGold.length) {
-      const where = bothEvents
-        ? ` for ${notGold.map((k) => EVENTS.find((e) => e.key === k)?.label ?? k).join(' and ')}`
+      const where = multiEvent
+        ? ` for ${notGold.map((k) => EVENT_LABEL[k] ?? k).join(' and ')}`
         : '';
       return setError(`Add at least one activation${where}. Only Gold can go without.`);
     }
@@ -758,8 +779,17 @@ export function ProposalForm({
           event: event || undefined,
           createdBy,
           createdByName,
-          tier: bothEvents ? undefined : sponsorTier || undefined,
-          tiers: bothEvents ? tiersByEvent : undefined,
+          tier: multiEvent ? undefined : sponsorTier || undefined,
+          // Only the cities still in scope: a city taken off the proposal
+          // leaves its tier behind in state so re-adding it restores the
+          // choice, and it must not reach the saved quote.
+          tiers: multiEvent
+            ? Object.fromEntries(
+                scopedEvents
+                  .filter((key) => tiersByEvent[key])
+                  .map((key) => [key, tiersByEvent[key]])
+              )
+            : undefined,
           // The checkout's per-event total (package + extras + benefits +
           // passes) is the authoritative charge for each tier city.
           eventPrices: scopedEvents.reduce<Record<string, string>>((acc, key) => {
@@ -799,12 +829,18 @@ export function ProposalForm({
           // À la carte branding items are ordinary activation modules, so
           // they're linked the same way and render as the same cards on the
           // proposal. Speaking items have no module and are carried by
-          // aLaCarte alone. A mixed both proposal keeps both halves: the tier
-          // cities' cart picks (dropping any that belong to an à la carte city)
-          // and the à la carte cities' branding modules.
+          // aLaCarte alone. A mixed multi-city proposal keeps both halves: the
+          // tier cities' cart picks (dropping any that belong to an à la carte
+          // city) and the à la carte cities' branding modules.
           modules: [
             ...cart
-              .filter((key) => !onMenuFor(cartEvent(key) ?? ''))
+              .filter((key) => {
+                const forEvent = cartEvent(key);
+                // A pick from a proposal made before picks carried a city
+                // belongs to the proposal as a whole, so it always stays.
+                if (!forEvent) return true;
+                return scopedEvents.includes(forEvent) && !onMenuFor(forEvent);
+              })
               .map((key) => ({ moduleId: cartModuleId(key), event: cartEvent(key) })),
             ...menuLines
               .filter((line) => line.moduleId)
@@ -853,30 +889,38 @@ export function ProposalForm({
 
       {step === 0 && (
         <StepPanel title="What are you selling?">
-          {nycOnly ? (
+          {locked ? (
             <Fieldset label="Event">
-              <p className="text-sm text-neutral-300">New York</p>
+              <p className="text-sm text-neutral-300">
+                {EVENT_LABEL[offered[0]] ?? offered[0]}
+              </p>
             </Fieldset>
           ) : (
-            <Fieldset label="Event">
+            <Fieldset
+              label="Event"
+              hint="One city, or as many as the sponsor is buying."
+            >
               <div className="flex flex-wrap gap-2">
-                {[...EVENTS, { key: 'both', label: 'Both' }].map((e) => (
+                {offered.map((key) => (
                   <Choice
-                    key={e.key}
-                    selected={eventFilter === e.key}
-                    onClick={() => chooseEventFilter(e.key as EventFilter)}
+                    key={key}
+                    selected={cities.includes(key)}
+                    onClick={() => toggleCity(key)}
                   >
-                    {e.label}
+                    {EVENT_LABEL[key] ?? key}
                   </Choice>
                 ))}
               </div>
             </Fieldset>
           )}
 
-          {eventFilter === 'both' ? (
+          {multiEvent ? (
             // Each city is bought separately, so the tier is chosen per city
-            // here rather than as a filter.
-            EVENTS.map((e) => {
+            // here rather than once for the whole proposal.
+            cities.map((cityKey) => {
+              // The city and its label, together — everything below keys off
+              // one or the other.
+              const e = { key: cityKey, label: EVENT_LABEL[cityKey] ?? cityKey };
               const options = tiersForEvent(e.key).map(
                 (t) => t.charAt(0).toUpperCase() + t.slice(1)
               );
@@ -973,7 +1017,7 @@ export function ProposalForm({
 
       {step === 1 && (
         <StepPanel
-          title={onMenu && !bothEvents ? 'Choose items' : 'Package'}
+          title={onMenu && !multiEvent ? 'Choose items' : 'Package'}
           hint={`${cart.length + menuPicks.length} selected`}
         >
           {/* One block per city sold à la carte — add items from a dropdown;
@@ -988,7 +1032,7 @@ export function ProposalForm({
               <div key={`menu-${eventKey}`} style={{ marginBottom: 28 }}>
                 <div className="bx-subhead">
                   <span className="t dim">
-                    {ALL_EVENTS.find((e) => e.key === eventKey)?.label ?? 'À la carte'}
+                    {EVENT_LABEL[eventKey] ?? 'À la carte'}
                   </span>
                   <span className="rule" />
                 </div>
@@ -1075,7 +1119,7 @@ export function ProposalForm({
                 <div key={`act-${key}`} style={{ marginBottom: 28 }}>
                   <div className="bx-subhead">
                     <span className="t dim">
-                      {bothEvents ? `${ALL_EVENTS.find((e) => e.key === key)?.label ?? key} · ` : ''}
+                      {multiEvent ? `${EVENT_LABEL[key] ?? key} · ` : ''}
                       {tierForEventNow(key)} package
                     </span>
                     <span className="rule" />
@@ -1215,9 +1259,9 @@ export function ProposalForm({
 
             return (
               <div key={key} className="mb-8 border-b border-neutral-800 pb-6 last:border-0">
-                {bothEvents && (
+                {multiEvent && (
                   <div className="mb-3 text-lg font-bold lowercase tracking-[0.35em] text-neutral-300">
-                    {key === 'nyc' ? 'new york' : key}
+                    {EVENT_LOWER[key] ?? key}
                   </div>
                 )}
 
@@ -1335,7 +1379,7 @@ export function ProposalForm({
       {step === 3 && contentOffered && (
         <StepPanel title="Content proposal" hint="Optional">
           {sessionEvents.map((key) => {
-            const label = ALL_EVENTS.find((e) => e.key === key)?.label ?? key;
+            const label = EVENT_LABEL[key] ?? key;
             const draft = draftFor(key);
             const stage = stageFor(key);
             const agenda = agendas[key];
@@ -1344,7 +1388,7 @@ export function ProposalForm({
               <div key={key} className="mb-8 border-b border-neutral-800 pb-6 last:border-0">
                 <Fieldset
                   label={
-                    bothEvents
+                    multiEvent
                       ? `${label}: would you like to add content details to this proposal?`
                       : 'Would you like to add content details to this proposal?'
                   }
@@ -1602,10 +1646,8 @@ export function ProposalForm({
               {/* Never re-asked: the scope in step 1 decided it. */}
               <Fieldset label="Event">
                 <p className="text-sm text-neutral-300">
-                  {bothEvents
-                    ? 'London and Asia'
-                    : ALL_EVENTS.find((e) => e.key === event)?.label ?? '—'}
-                  {!nycOnly && (
+                  {eventProse(event) || '—'}
+                  {!locked && (
                     <button
                       type="button"
                       onClick={() => setStep(0)}
@@ -1622,7 +1664,7 @@ export function ProposalForm({
               {scopedEvents.map((key) => (
                 <Fieldset
                   key={`sel-${key}`}
-                  label={bothEvents ? (ALL_EVENTS.find((e) => e.key === key)?.label ?? key) : 'Selling'}
+                  label={multiEvent ? (EVENT_LABEL[key] ?? key) : 'Selling'}
                 >
                   {onMenuFor(key) ? (
                     <p className="text-sm text-neutral-300">
@@ -1655,9 +1697,9 @@ export function ProposalForm({
                 </Fieldset>
               ))}
 
-              {/* Asia's tiers have no kiosk, so the question only makes
-                  sense when London is in scope. */}
-              {(event === 'london' || event === 'both') && (
+              {/* Only London's tiers include a kiosk, so the question only
+                  makes sense when London is in scope. */}
+              {cities.includes('london') && (
                 <Fieldset
                   label="Kiosk"
                   hint="Included in London tiers. Off leaves it off the proposal."
@@ -1713,7 +1755,7 @@ export function ProposalForm({
                 {cart.map((id) => (
                   <span key={id} className="item">
                     {byId.get(cartModuleId(id))?.title ?? id}
-                    {bothEvents && cartEvent(id) && (
+                    {multiEvent && cartEvent(id) && (
                       <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--bx-faint)' }}>
                         {cartEvent(id)}
                       </span>
@@ -1805,9 +1847,9 @@ export function ProposalForm({
 
               return (
                 <div key={`co-${key}`} className="mb-5">
-                  {bothEvents && (
+                  {multiEvent && (
                     <div className="bx-flabel" style={{ marginBottom: 8 }}>
-                      {ALL_EVENTS.find((e) => e.key === key)?.label ?? key}
+                      {EVENT_LABEL[key] ?? key}
                     </div>
                   )}
 

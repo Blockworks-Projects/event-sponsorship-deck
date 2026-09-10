@@ -12,6 +12,7 @@ import type { Deck } from '@/components/public-deck-view';
 import { KIOSK } from '@/lib/kiosk';
 import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
+import { EVENT_LOWER, eventProse, eventsOf, isMultiEvent } from '@/lib/events';
 
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
   asia: { venue: 'Marina Bay Sands, Singapore', dates: 'October 7, 2026' },
@@ -19,21 +20,13 @@ const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
   nyc: { venue: 'Javits Center North, New York', dates: 'March 30 – April 1, 2027' },
 };
 
-/** How each event is named in prose. Not the venue city — Asia's venue is in
- * Singapore, but the event is "Digital Asset Summit Asia". */
-const EVENT_NAME: Record<string, string> = {
-  london: 'London',
-  asia: 'Asia',
-  nyc: 'New York',
-};
-
 /** The live master deck in Drive. Used only in the PDF, where an in-page
  * view can't work — see salesDeck() below. */
 const SALES_DECK_URL =
   'https://docs.google.com/presentation/d/1oz8n6u5IgrWIuJng9bHADtU64973BCI3UYDHip78dv4/edit?usp=sharing';
 
-/** Covering both cities, neither city's page is right — the events index
- * lists them both. */
+/** Covering more than one city, no single city's page is right — the events
+ * index lists them all. */
 const ALL_EVENTS_SITE = 'https://blockworks.com/events';
 
 const EVENT_SITE: Record<string, string> = {
@@ -179,11 +172,14 @@ export function ProposalView({
       </button>
     );
 
-  // The kiosk is a London offer — Asia's tiers don't include one — so an
-  // Asia-only proposal never shows this section. Unset means yes: it's the
-  // default in the builder, and proposals made before the toggle existed all
-  // included one.
-  const londonInScope = proposal.event === 'london' || proposal.event === 'both';
+  // The cities this proposal covers, chronological.
+  const cities = eventsOf(proposal.event);
+
+  // The kiosk is a London offer — no other city's tiers include one — so a
+  // proposal without London never shows this section. Unset means yes: it's
+  // the default in the builder, and proposals made before the toggle existed
+  // all included one.
+  const londonInScope = cities.includes('london');
   // Kiosk or nothing: turning it off simply drops the section.
   const showKiosk = londonInScope && proposal.include_kiosk !== false;
   const kioskAccent = EVENT_ACCENT.london;
@@ -197,9 +193,9 @@ export function ProposalView({
   // they never carry the "pick one" note that a tier's options do.
   const menuEvents = new Set(menu.map((line) => line.event));
 
-  const gateBothEvents = proposal.event === 'both';
+  const gateMultiEvent = isMultiEvent(proposal.event);
   const gateShapes = EVENT_SHAPES[(proposal.event || '').toLowerCase()];
-  const gateAccent = gateBothEvents
+  const gateAccent = gateMultiEvent
     ? 'var(--das-ink)'
     : (proposal.event && EVENT_ACCENT[proposal.event]) || 'var(--das-london)';
 
@@ -209,7 +205,7 @@ export function ProposalView({
     // like DAS rather than a login form.
     return (
       <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafafa] px-6 text-neutral-900">
-        {gateBothEvents ? (
+        {gateMultiEvent ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/brand/shapes-both.svg" alt="" aria-hidden className="hero-shape hero-shape-both" />
         ) : (
@@ -224,7 +220,7 @@ export function ProposalView({
         )}
 
         <div className="relative w-full max-w-xl text-center">
-          {gateBothEvents ? (
+          {gateMultiEvent ? (
             <>
               {/* One line at any width: the type scales with the viewport
                   rather than wrapping, which broke the lockup in half. */}
@@ -273,8 +269,8 @@ export function ProposalView({
   }
 
   const facts = proposal.event ? EVENT_FACTS[proposal.event] : undefined;
-  // A section spanning both cities can't take either city's colour, so it's
-  // set in the brand's near-black. Per-event sections keep their own.
+  // A section spanning more than one city can't take any one city's colour,
+  // so it's set in the brand's near-black. Per-event sections keep their own.
   const accent = gateAccent;
   // Browsing the deck is a permanent part of the experience, so the button is
   // always there. Our own rendered pages are preferred; the embed is the
@@ -392,20 +388,17 @@ export function ProposalView({
   const activations = modules.filter((m) => m.category === 'activation');
   const price = proposal.discounted_price || proposal.list_price;
   const shapes = gateShapes;
-  // Across two cities, which activation belongs to which is the one thing a
-  // sponsor can't infer, so the availability badges come back.
-  const bothEvents = gateBothEvents;
-  // Chronological: Asia is October, London is November. Not alphabetical, and
-  // not whatever order the tiers happen to be stored in.
-  const EVENTS_IN_ORDER = ['asia', 'london'];
+  // Across more than one city, which activation belongs to which is the one
+  // thing a sponsor can't infer, so the availability badges come back.
+  const multiEvent = gateMultiEvent;
   const sessions =
     proposal.content_sessions ?? (proposal.content_session ? [proposal.content_session] : []);
-  // On a both-events proposal each city's content session is rendered inside
+  // On a multi-city proposal each city's content session is rendered inside
   // this section, so a proposal with a session but no activations still has
   // something to show under the heading.
   const hasPartnershipContent =
     activations.length > 0 ||
-    (bothEvents && sessions.some((sn) => sn.event && EVENTS_IN_ORDER.includes(sn.event)));
+    (multiEvent && sessions.some((sn) => sn.event && cities.includes(sn.event)));
 
   return (
     <div className="bg-[#fafafa] text-neutral-900">
@@ -413,8 +406,8 @@ export function ProposalView({
           bleed over the content below — the same arrangement the speaker
           portal uses for its hero. */}
       <section className="pdf-cover relative flex min-h-[70vh] flex-col justify-center overflow-hidden border-b border-neutral-200 px-10 py-24">
-        {bothEvents ? (
-          // One tri-colour cluster: neither city's pair would be right here.
+        {multiEvent ? (
+          // One tri-colour cluster: no single city's pair belongs here.
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/brand/shapes-both.svg" alt="" aria-hidden className="hero-shape hero-shape-both" />
         ) : (
@@ -428,9 +421,10 @@ export function ProposalView({
           )
         )}
 
-        {bothEvents ? (
-          // Two cities: ranged left on the same column as every section below,
-          // with the links up top and the cities as cards under the intro.
+        {multiEvent ? (
+          // More than one city: ranged left on the same column as every
+          // section below, with the links up top and the cities as cards
+          // under the intro.
           <div className="relative mx-auto w-full max-w-6xl px-10">
             <div className="flex gap-3">
               <a
@@ -458,8 +452,12 @@ export function ProposalView({
               financial institutions and institutional investors.
             </p>
 
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:max-w-4xl">
-              {EVENTS_IN_ORDER.map((key) => {
+            <div
+              className={`mt-12 grid gap-6 sm:grid-cols-2 lg:max-w-4xl ${
+                cities.length > 2 ? 'lg:grid-cols-3 lg:max-w-6xl' : ''
+              }`}
+            >
+              {cities.map((key) => {
                 const f = EVENT_FACTS[key];
                 if (!f) return null;
                 return (
@@ -468,7 +466,7 @@ export function ProposalView({
                       className="text-lg font-bold lowercase tracking-[0.35em]"
                       style={{ color: EVENT_ACCENT[key] }}
                     >
-                      {key === 'nyc' ? 'new york' : key}
+                      {EVENT_LOWER[key] ?? key}
                     </div>
                     <dl className="mt-4 space-y-1 text-sm">
                       <div>
@@ -568,7 +566,7 @@ export function ProposalView({
               <strong className="font-semibold text-neutral-900">{proposal.company}</strong> at{' '}
               <strong className="font-semibold text-neutral-900">
                 Digital Asset Summit{' '}
-                {bothEvents ? 'London and Asia' : EVENT_NAME[(proposal.event || '').toLowerCase()] ?? ''}
+                {eventProse(proposal.event)}
               </strong>
               , showcasing the sponsorship opportunities we believe will deliver the
               greatest impact for your brand. Explore your recommended sponsorship tier,
@@ -583,10 +581,10 @@ export function ProposalView({
         </div>
       </section>
 
-      {/* Across two cities the grid handles both kinds of column, including a
-          city sold à la carte. On a single event there is nothing to compare,
-          so an à la carte proposal simply has no tier block. */}
-      {bothEvents ? (
+      {/* Across cities the grid handles both kinds of column, including a city
+          sold à la carte. On a single event there is nothing to compare, so an
+          à la carte proposal simply has no tier block. */}
+      {multiEvent ? (
         <TierGrid proposal={proposal} tierTables={tierTables} accent={accent} />
       ) : onMenu ? null : (
         <TierIncluded proposal={proposal} tierTable={tierTable} accent={accent} />
@@ -619,16 +617,16 @@ export function ProposalView({
         </h2>
         {/* More than one option on a package: the sponsor picks one to include
             with the tier. Sits right under the heading. */}
-        {!bothEvents && !onMenu && activations.length > 1 && (
+        {!multiEvent && !onMenu && activations.length > 1 && (
           <p className="mt-3 text-sm font-semibold" style={{ color: accent }}>
             Please select one activation to be included in your {proposal.tier ?? ''} package.
           </p>
         )}
-        {/* Across two cities the activations are grouped under each, which
-            says which is which once per group rather than tagging every
-            single card. */}
-        {bothEvents ? (
-          EVENTS_IN_ORDER.map((key) => {
+        {/* Across cities the activations are grouped under each, which says
+            which is which once per group rather than tagging every single
+            card. */}
+        {multiEvent ? (
+          cities.map((key) => {
             const items = activations.filter((m) => m.pickedFor === key);
             if (!items.length) return null;
             return (
@@ -637,7 +635,7 @@ export function ProposalView({
                   className="pdf-keep-with-next text-lg font-bold lowercase tracking-[0.35em]"
                   style={{ color: EVENT_ACCENT[key] }}
                 >
-                  {key === 'nyc' ? 'new york' : key}
+                  {EVENT_LOWER[key] ?? key}
                 </h3>
                 {/* More than one option on a package: the sponsor picks one to
                     include with the tier. */}
@@ -716,9 +714,9 @@ export function ProposalView({
         </section>
       )}
 
-      {/* On a both-events proposal these have already been rendered inside
+      {/* On a multi-city proposal these have already been rendered inside
           their city's group above. */}
-      {(bothEvents ? sessions.filter((s) => !s.event || !EVENTS_IN_ORDER.includes(s.event)) : sessions)
+      {(multiEvent ? sessions.filter((s) => !s.event || !cities.includes(s.event)) : sessions)
         .map((session, i) => (
           <ContentSessionSection
             key={i}
@@ -739,7 +737,7 @@ export function ProposalView({
             We&apos;d love to partner with you at{' '}
             <strong className="font-semibold text-neutral-900">
               Digital Asset Summit{' '}
-              {bothEvents ? 'London and Asia' : EVENT_NAME[(proposal.event || '').toLowerCase()] ?? ''}
+              {eventProse(proposal.event)}
             </strong>
             . If you have any questions or would like to tailor your sponsorship package,
             simply reply to the email that included this proposal and a member of the

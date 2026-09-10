@@ -6,6 +6,7 @@ import { parsePrice, formatPrice } from '@/lib/pricing';
 import { validEmailList } from '@/lib/contacts';
 import type { MenuLine } from '@/lib/a-la-carte';
 import type { ContentSession } from '@/lib/types';
+import { isMultiEvent } from '@/lib/events';
 
 const HEADSHOT_BUCKET = 'session-speakers';
 
@@ -17,7 +18,7 @@ export interface ProposalInput {
   createdBy?: string;
   createdByName?: string;
   tier?: string;
-  /** Both-events: the tier at each, e.g. {london:'Presenting', asia:'Diamond'}. */
+  /** Multi-city: the tier at each, e.g. {london:'Presenting', asia:'Diamond'}. */
   tiers?: Record<string, string>;
   totalOverride?: string;
   discountPercent?: number;
@@ -102,12 +103,16 @@ export async function persistSessionHeadshots(
 
 /**
  * The tier bought at each event. A single-event proposal has one entry; a
- * both-events one can have a different tier at each, since a sponsor may go
+ * multi-city one can have a different tier at each, since a sponsor may go
  * Presenting in London and Diamond in Asia.
  */
 function tierMap(input: ProposalInput): Record<string, string> {
   if (input.tiers && Object.keys(input.tiers).length) return input.tiers;
-  if (input.event && input.event !== 'both' && input.tier) return { [input.event]: input.tier };
+  // A multi-city proposal states its tiers per city in `tiers`; only a
+  // single-city one can key the flat `tier` by its own event.
+  if (input.event && !isMultiEvent(input.event) && input.tier) {
+    return { [input.event]: input.tier };
+  }
   return {};
 }
 
@@ -115,7 +120,7 @@ function tierMap(input: ProposalInput): Record<string, string> {
 export async function proposalColumns(input: ProposalInput) {
   const tiers = tierMap(input);
 
-  // Across both events this is the sum of each event's tier price. The
+  // Across several events this is the sum of each event's tier price. The
   // formatted string is rebuilt from the total rather than concatenated, so
   // "$125K + $100K" reads as one figure.
   const entries = Object.entries(tiers);

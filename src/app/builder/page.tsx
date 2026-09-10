@@ -8,15 +8,9 @@ import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { parsePrice } from '@/lib/pricing';
 import { DeleteProposalButton } from '@/components/delete-proposal-button';
+import { eventLabel, eventSwatch } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
-
-const EVENT_LABEL: Record<string, string> = {
-  london: 'London',
-  asia: 'Asia',
-  nyc: 'New York',
-  both: 'London + Asia',
-};
 
 /** Compact time-since, e.g. "6m" / "3h" / "2d", then a date once it's old. */
 function ago(iso: string): string {
@@ -167,9 +161,6 @@ export default async function BuilderHomePage({
           </div>
           {visible.map((p) => {
             const views = viewsByProposal.get(p.id);
-            const evClass = ['london', 'asia', 'nyc', 'both'].includes(p.event ?? '')
-              ? p.event
-              : '';
             return (
               <div key={p.slug} style={{ position: 'relative' }}>
                 <Link href={`/builder/proposal/${p.slug}`} className="bx-prow">
@@ -181,8 +172,13 @@ export default async function BuilderHomePage({
                     </div>
                   </div>
                   <span>
-                    <span className={`bx-ev ${evClass}`}>
-                      {EVENT_LABEL[p.event ?? ''] ?? p.event ?? '—'}
+                    {/* The swatch is built from the cities themselves, so a
+                        multi-city deal shows a band per city. */}
+                    <span
+                      className="bx-ev"
+                      style={{ '--bx-e': eventSwatch(p.event) } as React.CSSProperties}
+                    >
+                      {eventLabel(p.event) || p.event || '—'}
                     </span>
                   </span>
                   <span className="bx-tier col-hide">{tierText(p)}</span>

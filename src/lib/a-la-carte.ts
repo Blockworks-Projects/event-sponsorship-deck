@@ -1,8 +1,9 @@
 // À la carte: selling individual items instead of a tier.
 //
-// Offered at London and Asia. On a both-events proposal each city stands on its
-// own — either can be sold à la carte while the other is on a tier, or both à
-// la carte. New York has no priced menu yet, so it is package-only.
+// Offered at London and Asia. On a multi-city proposal each city stands on its
+// own — one can be sold à la carte while another is on a tier, or all of them à
+// la carte. New York has no priced menu yet, so it is package-only wherever it
+// appears.
 //
 // The menu is the priced catalogue below, one list per city. Each item links to
 // its activation module (for the card on the sponsor page) by matching the

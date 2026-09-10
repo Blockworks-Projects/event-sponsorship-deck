@@ -47,7 +47,7 @@ export default async function ProposalPage({
     .eq('proposal_id', proposal.id)
     .order('sort_order', { ascending: true });
 
-  // Carry the event each pick was made for, so a both-events proposal can
+  // Carry the event each pick was made for, so a multi-city proposal can
   // say which city an activation belongs to rather than inferring it from
   // where it happens to be available.
   const modules = (links ?? [])

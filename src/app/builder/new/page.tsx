@@ -1,13 +1,14 @@
-// The first step of making a proposal: which year / event set is it for?
-// 2026 is Asia & London (single city or both); 2027 is New York only. Splitting
-// here is what keeps New York from ever being mixed with Asia/London.
+// The first step of making a proposal: which event set is it for?
+// 2026 is Asia and London, 2027 is New York, and the third card is for a deal
+// that spans the two years — a sponsor buying London and New York together.
+// Splitting here keeps the common single-year cases to the cities they sell.
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default function NewProposalChooser() {
   return (
-    <div className="bx-wrap bx-page" style={{ maxWidth: 780 }}>
+    <div className="bx-wrap bx-page" style={{ maxWidth: 1120 }}>
       <div className="bx-page-head">
         <div>
           <h1 className="bx-h1">New proposal</h1>
@@ -25,6 +26,11 @@ export default function NewProposalChooser() {
           <span className="glow" />
           <div className="yr">DAS 2027</div>
           <h3>New York</h3>
+        </Link>
+        <Link href="/builder/new/multi" className="bx-year multi">
+          <span className="glow" />
+          <div className="yr">DAS 2026 + 2027</div>
+          <h3>Multiple cities</h3>
         </Link>
       </div>
     </div>

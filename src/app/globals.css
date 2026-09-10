@@ -430,10 +430,6 @@
 /* event chip */
 .bx-ev { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--bx-muted); }
 .bx-ev::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--bx-e, var(--bx-faint)); }
-.bx-ev.london { --bx-e: var(--bx-london); }
-.bx-ev.asia { --bx-e: var(--bx-asia); }
-.bx-ev.nyc { --bx-e: var(--bx-nyc); }
-.bx-ev.both { --bx-e: linear-gradient(90deg, var(--bx-london) 50%, var(--bx-asia) 50%); }
 
 /* status pill */
 .bx-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; }
@@ -479,7 +475,7 @@
 .bx-empty { color: var(--bx-faint); font-size: 13px; padding: 26px 0; }
 
 /* year chooser */
-.bx-years { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 720px; }
+.bx-years { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; max-width: 1080px; }
 .bx-year { position: relative; border: 1px solid var(--bx-border); border-radius: var(--bx-radius); padding: 24px; background: var(--bx-surface); overflow: hidden; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; display: block; }
 .bx-year:hover { border-color: var(--bx-faint); transform: translateY(-2px); }
 .bx-year .glow { position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: var(--bx-y); opacity: 0.10; filter: blur(20px); }
@@ -487,6 +483,8 @@
 .bx-year h3 { margin: 12px 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .bx-year.das { --bx-y: var(--bx-london); }
 .bx-year.ny { --bx-y: var(--bx-nyc); }
+/* Spans the two years, so it takes neither year's colour. */
+.bx-year.multi { --bx-y: var(--bx-amber); }
 
 /* wizard */
 /* top stepper */

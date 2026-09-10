@@ -1,6 +1,7 @@
 // The Asia & London side of the builder (DAS 2026). Reached from the year
 // chooser at /builder/new — its own page so the year is a deliberate first
-// choice and NYC can't be mixed with Asia/London.
+// choice. A deal that also takes in New York starts from the multi-city card
+// instead, at /builder/new/multi.
 import { cookies } from 'next/headers';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';

@@ -4,15 +4,9 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ViewedAt } from '@/components/viewed-at';
 import type { SponsorshipModule } from '@/lib/types';
+import { eventLabel, eventSwatch } from '@/lib/events';
 
 export const dynamic = 'force-dynamic';
-
-const EVENT_LABEL: Record<string, string> = {
-  london: 'London',
-  asia: 'Asia',
-  nyc: 'New York',
-  both: 'London + Asia',
-};
 
 export default async function BuilderProposalPage({
   params,
@@ -59,9 +53,6 @@ export default async function BuilderProposalPage({
   const shareDisplay = `${origin}/${proposal.slug.replace(/-[a-z0-9]{4}$/, '')}`;
 
   const uniqueViewers = new Set(views.map((v) => v.viewer_email)).size;
-  const evClass = ['london', 'asia', 'nyc', 'both'].includes(proposal.event ?? '')
-    ? proposal.event
-    : '';
 
   return (
     <div className="bx-wrap bx-page" style={{ maxWidth: 900 }}>
@@ -69,7 +60,16 @@ export default async function BuilderProposalPage({
         <div>
           <h1 className="bx-h1">{proposal.company}</h1>
           <div className="bx-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {proposal.event && <span className={`bx-ev ${evClass}`}>{EVENT_LABEL[proposal.event] ?? proposal.event}</span>}
+            {proposal.event && (
+              // The swatch is built from the cities themselves, so a
+              // multi-city deal shows a band per city.
+              <span
+                className="bx-ev"
+                style={{ '--bx-e': eventSwatch(proposal.event) } as React.CSSProperties}
+              >
+                {eventLabel(proposal.event) || proposal.event}
+              </span>
+            )}
             <span>{modules.length} item{modules.length === 1 ? '' : 's'}</span>
             {proposal.total_price && <span>· {proposal.total_price}</span>}
           </div>

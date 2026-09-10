@@ -71,11 +71,14 @@ export interface Proposal {
   company: string;
   contact_name: string | null;
   contact_email: string | null;
-  event: 'london' | 'nyc' | 'asia' | 'both' | null;
+  /** The cities this covers: one key ('london'), or several joined with '+'
+   *  ('london+nyc'). 'both' is Asia + London's original spelling. Read it with
+   *  eventsOf() from lib/events rather than comparing it directly. */
+  event: string | null;
   // Snapshot at creation, not read live — a sent quote must not reprice
   // itself when someone edits the content deck.
   tier: string | null;
-  /** Both-events proposals: the tier bought at each, e.g. {london:'Presenting'}. */
+  /** Multi-city proposals: the tier bought at each, e.g. {london:'Presenting'}. */
   tiers: Record<string, string> | null;
   list_price: string | null;
   /** A hand-typed total for a bundled deal; wins over the calculated one. */
@@ -96,7 +99,7 @@ export interface Proposal {
   event_discounts: Record<string, { amount: number | null }> | null;
   /** Items sold without a tier, each priced by hand, plus any included-pass
    *  (GA/VIP) counts, which carry a qty rather than a price. Offered at every
-   *  event, and per city on a both-events proposal. */
+   *  event, and per city on a multi-city proposal. */
   a_la_carte:
     | {
         key: string;
