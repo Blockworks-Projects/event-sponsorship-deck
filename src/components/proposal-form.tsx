@@ -251,7 +251,11 @@ export function ProposalForm({
     setContactName(account.contactName ?? '');
     setContactEmail(account.contactEmail ?? '');
     setLogoUrl('');
-    if (account.logoUrl) {
+    if (account.logoUrl?.includes('/storage/v1/object/public/')) {
+      // Already ours: a logo remembered from a past proposal for this company.
+      // Importing it again would only make a second identical file.
+      setLogoUrl(account.logoUrl);
+    } else if (account.logoUrl) {
       // Airtable's URL expires within hours, so it's copied to our own
       // storage now rather than saved as-is.
       try {

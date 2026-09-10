@@ -7,34 +7,7 @@ import {
   SPONSOR_MAX_AGE_SECONDS,
   createSponsorToken,
 } from '@/lib/sponsor-auth';
-
-/**
- * The other proposals this address was sent — the welcome screen lists them,
- * so a sponsor with two doesn't need a second link and a second trip through
- * the gate.
- *
- * Addresses live in one text field, several to a proposal, so the query only
- * narrows the rows (a substring match can catch 'aa@x.com' looking for
- * 'a@x.com') and isAddressedTo does the exact check.
- */
-async function othersFor(address: string, exceptId: string) {
-  const { data } = await supabase
-    .from('proposals')
-    .select('slug, company, event, tier, tiers, contact_email, updated_at')
-    .ilike('contact_email', `%${address}%`)
-    .neq('id', exceptId)
-    .order('updated_at', { ascending: false });
-
-  return (data ?? [])
-    .filter((row) => isAddressedTo(row.contact_email as string | null, address))
-    .map((row) => ({
-      slug: row.slug as string,
-      company: row.company as string,
-      event: (row.event as string | null) ?? null,
-      tier: (row.tier as string | null) ?? null,
-      tiers: (row.tiers as Record<string, string> | null) ?? null,
-    }));
-}
+import { proposalsFor, type SponsorProposalOption } from '@/lib/sponsor-proposals';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -127,14 +100,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ viewId: data.id });
   }
 
-  let others: Awaited<ReturnType<typeof othersFor>> = [];
+  // Every proposal this address may open, this one included: quoted more than
+  // one way, the welcome screen offers them as options rather than sending a
+  // link and a gate for each.
+  let options: SponsorProposalOption[] = [];
   try {
-    others = await othersFor(address, proposalId);
+    options = await proposalsFor(address);
   } catch {
-    // The welcome screen simply won't list the others.
+    // The welcome screen falls back to this proposal alone.
   }
 
-  const res = NextResponse.json({ viewId: data.id, others });
+  const res = NextResponse.json({ viewId: data.id, options });
 
   // The session that saves typing the same address into every one of them. The
   // gate still decides what opens — this only remembers that it was passed.

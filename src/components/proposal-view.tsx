@@ -12,23 +12,27 @@ import type { Deck } from '@/components/public-deck-view';
 import { KIOSK, KIOSK_EVENTS, offersKiosk } from '@/lib/kiosk';
 import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
-import { EVENT_LOWER, eventLabel, eventProse, eventsOf, isMultiEvent } from '@/lib/events';
+import { EVENT_LABEL, EVENT_LOWER, eventProse, eventsOf, isMultiEvent } from '@/lib/events';
+import type { SponsorProposalOption } from '@/lib/sponsor-proposals';
 
-/** Another proposal the same address was sent, as the gate reports it. */
-type SiblingProposal = {
-  slug: string;
-  company: string;
-  event: string | null;
-  tier: string | null;
-  tiers: Record<string, string> | null;
-};
+/** "London & New York" — the cities an option covers. */
+function optionCities(event: string | null): string {
+  const names = eventsOf(event).map((key) => EVENT_LABEL[key] ?? key);
+  return names.join(' & ') || 'Digital Asset Summit';
+}
 
-/** "London + New York · Presenting" — what to call one in the list. A tier
- *  city names its tier; an à la carte one has none to name. */
-function siblingLabel(row: SiblingProposal): string {
-  const tiers = [...new Set(Object.values(row.tiers ?? {}))];
-  const tier = row.tier || (tiers.length === 1 ? tiers[0] : '');
-  return [eventLabel(row.event) || 'Digital Asset Summit', tier].filter(Boolean).join(' · ');
+/**
+ * What distinguishes one option from another under its cities: the tiers it
+ * buys, or the rep's own name for an à la carte package. Two options can
+ * cover the same cities, so without this they'd read identically.
+ */
+function optionDetail(row: SponsorProposalOption): string {
+  const names = [
+    ...Object.values(row.tiers ?? {}),
+    ...(row.tier ? [row.tier] : []),
+    ...Object.values(row.aLaCarteLabels ?? {}),
+  ].filter(Boolean);
+  return [...new Set(names)].join(' · ');
 }
 
 const EVENT_FACTS: Record<string, { venue: string; dates: string }> = {
@@ -101,6 +105,8 @@ export function ProposalView({
   decks = [],
   skipGate,
   unlockedAs,
+  teamPreview,
+  options: initialOptions = [],
   autoPrint,
 }: {
   proposal: Proposal;
@@ -112,13 +118,19 @@ export function ProposalView({
   /** The address a sponsor session already proved, when this proposal was
    *  addressed to it — the gate is skipped and the open logged on arrival. */
   unlockedAs?: string | null;
+  /** A Blockworks rep signed into the builder, which already opens every
+   *  proposal. No gate, and no logged open: this is a preview, not a read. */
+  teamPreview?: boolean;
+  /** The proposals this address may open, when the server already knew the
+   *  address. The gate reports the same list for a viewer who types it. */
+  options?: SponsorProposalOption[];
   /** Opened from the builder to print: raise the dialog on arrival. */
   autoPrint?: boolean;
 }) {
-  const [unlocked, setUnlocked] = useState(!!skipGate || !!unlockedAs);
-  /** The other proposals this address was sent, listed on the welcome screen.
-   *  Reported by the gate, which is the only thing that knows the address. */
-  const [others, setOthers] = useState<SiblingProposal[]>([]);
+  const [unlocked, setUnlocked] = useState(!!skipGate || !!unlockedAs || !!teamPreview);
+  /** Every proposal this viewer may open, this one included. Known up front
+   *  when a session let them in; otherwise the gate reports it. */
+  const [options, setOptions] = useState<SponsorProposalOption[]>(initialOptions);
   // After the gate a viewer picks a destination: a proposal, or the current
   // sales deck. The PDF path goes straight to the proposal. A sponsor session
   // skips the gate but still lands here — arriving already unlocked is what
@@ -145,7 +157,7 @@ export function ProposalView({
    */
   const logged = useRef(false);
   useEffect(() => {
-    if (!unlockedAs || skipGate || logged.current) return;
+    if (!unlockedAs || skipGate || teamPreview || logged.current) return;
     logged.current = true;
     fetch('/api/deck-views', {
       method: 'POST',
@@ -158,11 +170,11 @@ export function ProposalView({
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
-        if (Array.isArray(body?.others)) setOthers(body.others);
+        if (Array.isArray(body?.options)) setOptions(body.options);
       })
       // A failed log or list shouldn't keep a sponsor out of their proposal.
       .catch(() => undefined);
-  }, [unlockedAs, skipGate, proposal.id]);
+  }, [unlockedAs, skipGate, teamPreview, proposal.id]);
 
   // The rep clicked "Save as PDF" in the builder, which opens this page in a
   // new tab. Waiting for load means images and webfonts are in before the
@@ -207,7 +219,7 @@ export function ProposalView({
       if (!res.ok) {
         throw new Error(body.error ?? 'Something went wrong.');
       }
-      if (Array.isArray(body.others)) setOthers(body.others);
+      if (Array.isArray(body.options)) setOptions(body.options);
       setUnlocked(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -355,57 +367,77 @@ export function ProposalView({
           Welcome, {proposal.company}
         </h1>
         <p className="mt-3 max-w-lg text-center text-neutral-500">
-          {others.length > 0
-            ? 'Your proposals are ready — this one, and the rest below.'
+          {options.length > 1
+            ? `You have ${options.length} options to choose from. Open any of them to see what's included.`
             : 'Your proposal is ready.'}{' '}
           You can also browse the full Digital Asset Summit sales deck, which is
           always the current version.
         </p>
-        <div className="mt-10 flex flex-wrap justify-center gap-4">
-          <button onClick={() => setView('proposal')}
-            className="px-8 py-4 text-sm font-semibold text-white"
-            style={{ backgroundColor: accent }}>
-            {others.length > 0 ? 'This proposal' : 'Your proposal'}
-          </button>
-          {salesDeck(
-            'border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white',
-            'View sales deck'
-          )}
-        </div>
 
-        {/* Everything else this address was sent. A sponsor is often sent one
-            proposal per city, or a revision, and each used to mean its own
-            link and its own trip through the gate — the address has already
-            been given, so they open straight from here. */}
-        {others.length > 0 && (
-          <div className="mt-14 w-full max-w-md">
-            <div className="text-center text-xs font-semibold uppercase tracking-widest text-neutral-400">
-              Also sent to you
-            </div>
-            <ul className="mt-4 divide-y divide-neutral-200 border-y border-neutral-200">
-              {others.map((row) => (
-                <li key={row.slug}>
-                  <a
-                    href={`/${row.slug}`}
-                    className="flex items-center justify-between gap-4 py-4 hover:opacity-60"
-                  >
+        {/* Quoted more than one way, every option is offered here: one link,
+            one address given once, and the sponsor picks. Quoted once, the
+            single button stands as it always has — there is nothing to pick
+            between, and "Option 1" would imply there were more. */}
+        {options.length > 1 ? (
+          <>
+            <div className="mt-10 w-full max-w-md space-y-3">
+              {options.map((row, i) => {
+                // The one already open switches view in place rather than
+                // navigating — same page, and it logs no second open.
+                const here = row.slug === proposal.slug;
+                const detail = optionDetail(row);
+                const body = (
+                  <>
                     <span>
-                      <span className="block text-sm font-semibold">{siblingLabel(row)}</span>
-                      {/* Named only when it isn't this sponsor — one person can
-                          hold the proposals for more than one company. */}
-                      {row.company !== proposal.company && (
-                        <span className="mt-0.5 block text-sm text-neutral-500">
-                          {row.company}
-                        </span>
+                      <span className="block text-sm font-semibold">
+                        Option {i + 1}: {optionCities(row.event)}
+                      </span>
+                      {detail && (
+                        <span className="mt-0.5 block text-sm text-neutral-500">{detail}</span>
                       )}
                     </span>
                     <span className="text-sm text-neutral-400" aria-hidden>
                       →
                     </span>
+                  </>
+                );
+                const shell =
+                  'flex w-full items-center justify-between gap-4 border px-6 py-4 text-left hover:bg-white';
+                return here ? (
+                  <button
+                    key={row.slug}
+                    type="button"
+                    onClick={() => setView('proposal')}
+                    className={shell}
+                    style={{ borderColor: accent }}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <a key={row.slug} href={`/${row.slug}`} className={`${shell} border-neutral-300`}>
+                    {body}
                   </a>
-                </li>
-              ))}
-            </ul>
+                );
+              })}
+            </div>
+            <div className="mt-6">
+              {salesDeck(
+                'border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white',
+                'View sales deck'
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
+            <button onClick={() => setView('proposal')}
+              className="px-8 py-4 text-sm font-semibold text-white"
+              style={{ backgroundColor: accent }}>
+              Your proposal
+            </button>
+            {salesDeck(
+              'border border-neutral-300 px-8 py-4 text-sm font-semibold text-neutral-900 hover:bg-white',
+              'View sales deck'
+            )}
           </div>
         )}
       </div>

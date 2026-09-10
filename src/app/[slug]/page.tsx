@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
 import { SPONSOR_COOKIE_NAME, readSponsorToken } from '@/lib/sponsor-auth';
-import { isAddressedTo } from '@/lib/contacts';
+import { emailList, isAddressedTo } from '@/lib/contacts';
+import { proposalsFor, type SponsorProposalOption } from '@/lib/sponsor-proposals';
 import { ProposalView } from '@/components/proposal-view';
 import type { Deck } from '@/components/public-deck-view';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
@@ -32,8 +33,8 @@ export default async function ProposalPage({
   // the builder. A sponsor has no cookie, so they never see it — and it isn't
   // in the PDF either, which renders with print=1.
   const jar = await cookies();
-  const isTeam =
-    print !== '1' && !!readSessionToken(jar.get(BUILDER_COOKIE_NAME)?.value ?? '');
+  const teamEmail = readSessionToken(jar.get(BUILDER_COOKIE_NAME)?.value ?? '');
+  const isTeam = print !== '1' && !!teamEmail;
   // A sponsor who has already given their address at one gate: the session
   // says which address, and this proposal still has to be addressed to it.
   const sponsorEmail = readSponsorToken(jar.get(SPONSOR_COOKIE_NAME)?.value ?? '');
@@ -52,6 +53,26 @@ export default async function ProposalPage({
     sponsorEmail && isAddressedTo(proposal.contact_email, sponsorEmail)
       ? sponsorEmail
       : null;
+
+  // The rep who wrote it, opening their own link. A builder session already
+  // opens every proposal in the tool, so a gate in front of the same content
+  // asks a signed-in colleague to prove something they've already proved.
+  // Their visit is a preview and is deliberately not logged as a sponsor open,
+  // which would otherwise show up as the sponsor having read it.
+  const teamPreview = isTeam && !unlockedAs;
+
+  // What the welcome screen offers. A sponsor sees every proposal their own
+  // address may open; a rep previewing sees the same list the sponsor will,
+  // read from the address this proposal is addressed to.
+  const forAddress = unlockedAs ?? (teamPreview ? emailList(proposal.contact_email)[0] : null);
+  let options: SponsorProposalOption[] = [];
+  if (forAddress) {
+    try {
+      options = await proposalsFor(forAddress);
+    } catch {
+      // The welcome screen falls back to this proposal alone.
+    }
+  }
 
   const { data: links } = await supabase
     .from('proposal_modules')
@@ -134,6 +155,8 @@ export default async function ProposalPage({
         tierTables={(tierTables ?? []) as SponsorshipModule[]}
         skipGate={print === '1'}
         unlockedAs={unlockedAs}
+        teamPreview={teamPreview}
+        options={options}
         autoPrint={autoprint === '1'}
       />
     </>
