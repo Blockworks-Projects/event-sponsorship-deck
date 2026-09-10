@@ -77,21 +77,33 @@ export function TierGrid({
 
   if (columns.length < 2) return null;
 
-  // Every benefit named by any of the events, in the order that event's table
-  // lists them — so a row present at one city and not the other still shows,
-  // with a blank against the city that doesn't include it.
+  // Every benefit named by any of the events, so a row present at one city and
+  // not the other still shows, with a blank against the city that doesn't
+  // include it.
+  //
+  // Tier benefits keep the order their own table lists them in: that order is
+  // the deck's, and it leads with the headline benefits. À la carte items have
+  // no table to order them — they arrive in whatever order the rep clicked
+  // them, which reads as no order at all — so those go A–Z after.
   const labels: string[] = [];
   columns.forEach((column) => {
-    // An à la carte column contributes its items as rows; a tier column
-    // contributes its benefits.
-    for (const item of column.items ?? []) {
-      if (!labels.includes(item.label)) labels.push(item.label);
-    }
     (column.table?.tier_rows ?? []).forEach((row) => {
       if (hidesKioskRow(proposal.include_kiosk, row.label)) return;
       if (!labels.includes(row.label)) labels.push(row.label);
     });
   });
+
+  const itemLabels: string[] = [];
+  columns.forEach((column) => {
+    for (const item of column.items ?? []) {
+      if (labels.includes(item.label) || itemLabels.includes(item.label)) continue;
+      itemLabels.push(item.label);
+    }
+  });
+  // numeric so "15 Minute…" sorts by its number rather than by "1"; base
+  // sensitivity so "À la carte package" files under A rather than after Z.
+  itemLabels.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  labels.push(...itemLabels);
 
   // The rep's Add-on tweaks, keyed by event: drop what they removed from a
   // city's column, add on what they added even where the chart says "—".
