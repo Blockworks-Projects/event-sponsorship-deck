@@ -15,9 +15,10 @@ import {
   catalogFor,
   isSpeaking,
   isTicket,
+  ticketPrice,
   type MenuLine,
 } from '@/lib/a-la-carte';
-import { hidesKioskRow } from '@/lib/kiosk';
+import { hidesKioskRow, offersKiosk } from '@/lib/kiosk';
 import {
   EVENT_KEYS,
   EVENT_LABEL,
@@ -185,9 +186,9 @@ export function ProposalForm({
         .map((line) => [menuKey(line.event, line.key), String(parsePrice(line.price) ?? '')])
     )
   );
-  // GA/VIP pass counts included in an à la carte package, keyed "event|ticketKey".
-  // Included, not priced: they show on the proposal as counts but add nothing to
-  // the total. A tier bundles these in; an à la carte package sets them by hand.
+  // GA/VIP pass counts on an à la carte package, keyed "event|ticketKey".
+  // Charged per pass at the city's ticket price, so the count moves the total.
+  // A tier bundles passes in; an à la carte package sets them by hand.
   const [menuTickets, setMenuTickets] = useState<Record<string, string>>(
     Object.fromEntries(
       (existing?.a_la_carte ?? [])
@@ -402,13 +403,36 @@ export function ProposalForm({
   const menuScope = menuOfferedEvents.filter((key) => menuSel.includes(key));
   const onMenu = menuScope.length > 0;
 
-  /** The GA/VIP pass counts set for one city, as save-ready lines. */
+  /** How many passes of one kind are set for a city, or null when none are. */
+  const ticketQty = (eventKey: string, ticketKey: string): number | null => {
+    const raw = menuTickets[menuKey(eventKey, ticketKey)];
+    const qty = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(qty) && qty > 0 ? qty : null;
+  };
+
+  /** What a city's passes of one kind cost: the count times the per-pass price.
+   *  Null where the city has no pass pricing — those stay bundled. */
+  const ticketCharge = (eventKey: string, ticketKey: string): number | null => {
+    const qty = ticketQty(eventKey, ticketKey);
+    const each = ticketPrice(eventKey, ticketKey);
+    return qty === null || each === null ? null : qty * each;
+  };
+
+  /** The GA/VIP pass counts set for one city, as save-ready lines. Each carries
+   *  its count and what that count costs. */
   const ticketLinesForEvent = (eventKey: string): MenuLine[] =>
     TICKET_ITEMS.flatMap((ticket) => {
-      const raw = menuTickets[menuKey(eventKey, ticket.key)];
-      const qty = raw ? parseInt(raw, 10) : NaN;
-      if (!Number.isFinite(qty) || qty <= 0) return [];
-      return [{ key: ticket.key, label: ticket.label, event: eventKey, moduleId: null, price: null, qty }];
+      const qty = ticketQty(eventKey, ticket.key);
+      if (qty === null) return [];
+      const charge = ticketCharge(eventKey, ticket.key);
+      return [{
+        key: ticket.key,
+        label: ticket.label,
+        event: eventKey,
+        moduleId: null,
+        price: charge === null ? null : String(charge),
+        qty,
+      }];
     });
 
   /** An à la carte city's lines, ready to save: the rep's package price, the
@@ -433,9 +457,9 @@ export function ProposalForm({
           price: menuPriceFor(eventKey, item) || null,
         });
       });
-    // Bundled inclusions, listed with no price: added benefits, then passes.
-    // GA/VIP benefits are skipped here — they're carried by the pass lines with
-    // their count, so they aren't listed twice.
+    // Added benefits, listed with no price of their own. GA/VIP benefits are
+    // skipped here — they're carried by the pass lines with their count and
+    // charge, so they aren't listed twice.
     (overrides[eventKey]?.added ?? [])
       .filter((label) => !/general admission|vip/i.test(label))
       .forEach((label) => {
@@ -494,7 +518,8 @@ export function ProposalForm({
     parsePrice(packagePrice[eventKey] ?? defaultPackagePrice(eventKey));
 
   /** The priced add-ons' total for one à la carte city — the activations and
-   *  speaking sessions. Tickets/benefits are bundled, so they carry no price. */
+   *  speaking sessions. Added benefits are bundled, so they carry no price;
+   *  passes are counted separately, in ticketsTotal. */
   const menuAddOnsTotal = (eventKey: string) =>
     menuItemsForEvent(eventKey)
       .filter((item) => menuPicks.includes(menuKey(eventKey, item.key)))
@@ -503,13 +528,21 @@ export function ProposalForm({
         return value === null ? sum : (sum ?? 0) + value;
       }, null);
 
-  /** An à la carte city's total: the rep's one bundle price plus the priced
-   *  add-ons (activations and speaking) that add on to it. */
+  /** What one city's passes come to, across both kinds. */
+  const ticketsTotal = (eventKey: string) =>
+    TICKET_ITEMS.reduce<number | null>((sum, ticket) => {
+      const charge = ticketCharge(eventKey, ticket.key);
+      return charge === null ? sum : (sum ?? 0) + charge;
+    }, null);
+
+  /** An à la carte city's total: the rep's one bundle price, the priced add-ons
+   *  (activations and speaking) and the passes, which are charged per pass. */
   const menuTotalForEvent = (eventKey: string): number | null => {
     const pkg = parsePrice(packagePrice[eventKey] ?? '');
     const addOns = menuAddOnsTotal(eventKey);
-    if (pkg === null && addOns === null) return null;
-    return (pkg ?? 0) + (addOns ?? 0);
+    const passes = ticketsTotal(eventKey);
+    if (pkg === null && addOns === null && passes === null) return null;
+    return (pkg ?? 0) + (addOns ?? 0) + (passes ?? 0);
   };
 
   /** The charge for one city: the à la carte items' total, or simply the
@@ -1355,6 +1388,17 @@ export function ProposalForm({
                                   inputMode="numeric"
                                   className="w-24"
                                 />
+                                {/* Passes are charged, so the cost is shown as
+                                    the count is typed rather than only in the
+                                    checkout. */}
+                                {ticketPrice(key, ticketKey) !== null && (
+                                  <span className="text-sm text-neutral-500">
+                                    {formatPrice(ticketPrice(key, ticketKey) as number)} each
+                                    {ticketCharge(key, ticketKey) !== null && (
+                                      <> · {formatPrice(ticketCharge(key, ticketKey) as number)}</>
+                                    )}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </li>
@@ -1697,12 +1741,12 @@ export function ProposalForm({
                 </Fieldset>
               ))}
 
-              {/* Only London's tiers include a kiosk, so the question only
-                  makes sense when London is in scope. */}
-              {cities.includes('london') && (
+              {/* Only London's and New York's tiers include a kiosk, so the
+                  question only makes sense when one of them is in scope. */}
+              {offersKiosk(cities) && (
                 <Fieldset
                   label="Kiosk"
-                  hint="Included in London tiers. Off leaves it off the proposal."
+                  hint="Included in London and New York tiers. Off leaves it off the proposal."
                 >
                   <div className="flex gap-2">
                     <Choice selected={includeKiosk} onClick={() => setIncludeKiosk(true)}>
@@ -1864,8 +1908,8 @@ export function ProposalForm({
                         (v) => setPackagePrice((c) => ({ ...c, [key]: v }))
                       )}
 
-                      {/* Bundled in, no separate price: added benefits and passes.
-                          GA/VIP are shown by the pass rows below, not here. */}
+                      {/* Bundled in, no separate price: the benefits added on
+                          the Add-ons step. GA/VIP are the pass rows below. */}
                       {(overrides[key]?.added ?? [])
                         .filter((label) => !/general admission|vip/i.test(label))
                         .map((label) => (
@@ -1874,13 +1918,30 @@ export function ProposalForm({
                           <span className="w-40 text-right">In bundle</span>
                         </div>
                       ))}
+                      {/* Passes, charged per pass: the count times the city's
+                          ticket price. Read-only — the count is set on the
+                          Add-ons step, and the price comes from the registry. */}
                       {TICKET_ITEMS.map((t) => {
-                        const n = parseInt(menuTickets[menuKey(key, t.key)] ?? '', 10);
-                        if (!Number.isFinite(n) || n <= 0) return null;
+                        const n = ticketQty(key, t.key);
+                        if (n === null) return null;
+                        const each = ticketPrice(key, t.key);
+                        const charge = ticketCharge(key, t.key);
                         return (
-                          <div key={t.key} className="flex items-center gap-3 text-sm text-neutral-500">
-                            <span className="flex-1">{t.label}: {n}</span>
-                            <span className="w-40 text-right">In bundle</span>
+                          <div key={t.key} className="flex items-center gap-3 text-sm">
+                            <span className="flex-1 text-neutral-300">
+                              {t.label}: {n}
+                              {each !== null && (
+                                <span className="text-neutral-500"> · {formatPrice(each)} each</span>
+                              )}
+                            </span>
+                            {showOriginal && (
+                              <span className="w-24 text-right text-xs text-neutral-500">
+                                {each !== null ? formatPrice(each) : '—'}
+                              </span>
+                            )}
+                            <span className="w-40 text-right font-medium text-neutral-200">
+                              {charge === null ? 'In bundle' : formatPrice(charge)}
+                            </span>
                           </div>
                         );
                       })}

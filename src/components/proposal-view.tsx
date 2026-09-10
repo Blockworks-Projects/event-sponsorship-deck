@@ -9,7 +9,7 @@ import { DasWordmark } from '@/components/das-wordmark';
 import { ContentSessionSection } from '@/components/content-session';
 import { NoteText } from '@/components/note-text';
 import type { Deck } from '@/components/public-deck-view';
-import { KIOSK } from '@/lib/kiosk';
+import { KIOSK, KIOSK_EVENTS, offersKiosk } from '@/lib/kiosk';
 import { optimized } from '@/lib/image';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
 import { EVENT_LOWER, eventProse, eventsOf, isMultiEvent } from '@/lib/events';
@@ -175,14 +175,16 @@ export function ProposalView({
   // The cities this proposal covers, chronological.
   const cities = eventsOf(proposal.event);
 
-  // The kiosk is a London offer — no other city's tiers include one — so a
-  // proposal without London never shows this section. Unset means yes: it's
-  // the default in the builder, and proposals made before the toggle existed
-  // all included one.
-  const londonInScope = cities.includes('london');
+  // The kiosk comes with London's and New York's tiers, so a proposal for
+  // neither never shows this section. Unset means yes: it's the default in the
+  // builder, and proposals made before the toggle existed all included one.
   // Kiosk or nothing: turning it off simply drops the section.
-  const showKiosk = londonInScope && proposal.include_kiosk !== false;
-  const kioskAccent = EVENT_ACCENT.london;
+  const showKiosk = offersKiosk(cities) && proposal.include_kiosk !== false;
+  // The first kiosk city's own colour — London's blue where London is in
+  // scope, New York's green on a New York-only deal.
+  const kioskAccent =
+    EVENT_ACCENT[cities.find((key) => KIOSK_EVENTS.includes(key)) ?? 'london'] ??
+    EVENT_ACCENT.london;
 
 
   // À la carte: items bought individually, so there is no tier block to show

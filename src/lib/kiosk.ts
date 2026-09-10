@@ -4,7 +4,7 @@
 // 16:9 screenshot that reads as a pasted-in slide next to the rest of the
 // proposal, and its text can't reflow on a phone.
 //
-// London only. Asia has no kiosk in its tiers.
+// London and New York, whose tiers both bundle one. Asia's tiers don't.
 export const KIOSK = {
   title: 'Kiosk',
   // The render from the slide, cropped out of it and stored on its own so it
@@ -17,6 +17,15 @@ export const KIOSK = {
     'Integrated 42" screen for live demos, presentations, and video content',
   ],
 };
+
+/** The cities whose tiers include a kiosk. Asia's don't, so an Asia-only
+ *  proposal is never asked about one. */
+export const KIOSK_EVENTS = ['london', 'nyc'];
+
+/** Does any city on this proposal include a kiosk? */
+export function offersKiosk(cities: string[]): boolean {
+  return cities.some((key) => KIOSK_EVENTS.includes(key));
+}
 
 /**
  * The tier tables list "Branded Kiosk (2 Days)" as a tier benefit. When a

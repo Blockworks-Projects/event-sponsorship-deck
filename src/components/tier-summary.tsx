@@ -196,18 +196,48 @@ export function PriceBreakdown({
                 ))}
 
               {/* What the bundle includes — the same expandable rows the tier
-                  list uses, so each carries its explanation. Passes show their
-                  count; everything else reads "Included". */}
+                  list uses, so each carries its explanation. Only the benefits
+                  the rep added on: they carry no price of their own. */}
               {menu
-                .filter((item) => item.key !== 'ala-package' && (item.qty != null || !item.price))
+                .filter((item) => item.key !== 'ala-package' && item.qty == null && !item.price)
                 .map((item) => (
                   <BenefitRow
                     key={`${item.event}|${item.key}`}
                     label={item.label}
-                    value={item.qty != null ? `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}` : 'Included'}
+                    value="Included"
                     accent={accent}
                   />
                 ))}
+
+              {/* Passes, charged by the count. A proposal quoted before passes
+                  were charged carries no price on its pass lines, so it still
+                  reads as part of the bundle. */}
+              {menu
+                .filter((item) => item.qty != null)
+                .map((item) => {
+                  const passes = `${item.qty} ${item.qty === 1 ? 'pass' : 'passes'}`;
+                  if (!item.price) {
+                    return (
+                      <BenefitRow
+                        key={`${item.event}|${item.key}`}
+                        label={item.label}
+                        value={passes}
+                        accent={accent}
+                      />
+                    );
+                  }
+                  return (
+                    <div key={`${item.event}|${item.key}`} className="flex justify-between gap-6 py-3">
+                      <dt className="text-sm text-neutral-700">
+                        {EVENT_LABEL[item.event] ?? item.event} · {item.label}
+                        <span className="ml-2 text-neutral-500">{passes}</span>
+                      </dt>
+                      <dd className="text-sm font-semibold text-neutral-900">
+                        {formatPrice(parsePrice(item.price) ?? 0)}
+                      </dd>
+                    </div>
+                  );
+                })}
 
               {/* Priced add-ons — activations and speaking, each adding on. */}
               {menu
