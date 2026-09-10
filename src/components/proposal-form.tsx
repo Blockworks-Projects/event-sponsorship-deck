@@ -207,6 +207,22 @@ export function ProposalForm({
         .map((line) => [menuKey(line.event, line.key), true])
     )
   );
+  // The slide a rep attached to an à la carte item by hand, keyed
+  // "event|itemKey".
+  //
+  // An item finds its card by matching the price list's label to the deck's
+  // card title, which couples two things nobody keeps in step: rename either
+  // and the card silently vanishes from the proposal. A tier city never had
+  // this problem because the rep picks its activations by name from a list.
+  // This is that list, for à la carte — the automatic match still runs and is
+  // still the default, but it is no longer the only way to get a card.
+  const [menuCards, setMenuCards] = useState<Record<string, string>>(
+    Object.fromEntries(
+      (existing?.a_la_carte ?? [])
+        .filter((line) => line.moduleId)
+        .map((line) => [menuKey(line.event, line.key), line.moduleId as string])
+    )
+  );
   // What each à la carte city says under "Tier" on the cover. A city sold item
   // by item has no tier, so the rep names the package themselves — "Custom
   // Package", "Track Stage Partner" — and left blank the card keeps its dash.
@@ -441,7 +457,9 @@ export function ProposalForm({
     speaking: boolean;
   }[] =>
     catalogFor(eventKey).map((item) => {
-      const module = moduleForLabel(eventKey, item.label);
+      // The rep's own choice first; the title match is only the default.
+      const chosen = menuCards[menuKey(eventKey, item.key)];
+      const module = (chosen ? byId.get(chosen) : undefined) ?? moduleForLabel(eventKey, item.label);
       return {
         key: item.key,
         label: item.label,
@@ -1222,21 +1240,26 @@ export function ProposalForm({
                   {brandingPicked.length > 0 && (
                     <div className="mt-3 space-y-1">
                       {brandingPicked.map((i) => {
-                        // An item with no matching card still gets priced and
-                        // still shows on the investment table — it just has no
-                        // slide to show, which until now happened silently.
-                        const card = moduleForLabel(eventKey, i.label);
+                        // Which slide this item shows: the rep's own choice,
+                        // else the title match. An item with no card still
+                        // gets priced and still shows on the investment table
+                        // — it just has nothing to show, which used to happen
+                        // silently and with no way to fix it from here.
+                        const pickKey = menuKey(eventKey, i.key);
+                        const auto = moduleForLabel(eventKey, i.label);
+                        const chosen = menuCards[pickKey];
+                        const card = (chosen ? byId.get(chosen) : undefined) ?? auto;
                         const other = card ? undefined : moduleElsewhere(eventKey, i.label);
                         return (
-                        <div key={i.key} className="flex items-center gap-3 text-sm">
+                        <div key={i.key} className="flex flex-wrap items-center gap-3 text-sm">
                           <span className="flex-1 text-neutral-300">{i.label}</span>
                           {!card && (
                             <span
                               className="text-xs text-amber-400"
                               title={
                                 other
-                                  ? `"${i.label}" is tagged ${regionLabel(other.region || '')} in the synced deck, so ${EVENT_LABEL[eventKey] ?? eventKey} can't show it. Fix the region marker on that slide, or add the card to this city's deck.`
-                                  : `No activation card in the ${EVENT_LABEL[eventKey] ?? eventKey} deck matches "${i.label}". The proposal will price it with no image.`
+                                  ? `"${i.label}" is tagged ${regionLabel(other.region || '')} in the synced deck, so ${EVENT_LABEL[eventKey] ?? eventKey} can't show it. Pick its slide below, fix the region marker on that slide, or add the card to this city's deck.`
+                                  : `No activation card in the ${EVENT_LABEL[eventKey] ?? eventKey} deck matches "${i.label}". Pick its slide below, or the proposal will price it with no image.`
                               }
                             >
                               {other
@@ -1244,6 +1267,46 @@ export function ProposalForm({
                                 : 'No card in deck'}
                             </span>
                           )}
+                          {/* The slide, by name. Defaults to whatever the title
+                              match found, so this only needs touching when the
+                              match is wrong or missing. */}
+                          <select
+                            value={card?.id ?? ''}
+                            onChange={(e) =>
+                              setMenuCards((c) => ({ ...c, [pickKey]: e.target.value }))
+                            }
+                            className="max-w-[15rem] rounded-none border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300"
+                            aria-label={`Slide for ${i.label}`}
+                          >
+                            <option value="">No slide</option>
+                            {activationsForEvent(eventKey).map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.title}
+                              </option>
+                            ))}
+                            {/* Cards this city doesn't sell, kept separate and
+                                named by their own city: a card tagged for the
+                                wrong deck can still be attached deliberately,
+                                which is the fastest way past a mis-tagged
+                                slide — but never by accident. */}
+                            {(() => {
+                              const here = new Set(
+                                activationsForEvent(eventKey).map((m) => m.id)
+                              );
+                              const elsewhere = activations.filter((m) => !here.has(m.id));
+                              if (!elsewhere.length) return null;
+                              return (
+                                <optgroup label="Other cities">
+                                  {elsewhere.map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.title}
+                                      {m.region ? ` · ${regionLabel(m.region)}` : ''}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              );
+                            })()}
+                          </select>
                           <span className="text-neutral-500">{formatPrice(i.price)}</span>
                           <button
                             type="button"
