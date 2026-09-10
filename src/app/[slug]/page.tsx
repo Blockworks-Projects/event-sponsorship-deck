@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { BUILDER_COOKIE_NAME, readSessionToken } from '@/lib/builder-auth';
+import { SPONSOR_COOKIE_NAME, readSponsorToken } from '@/lib/sponsor-auth';
+import { isAddressedTo } from '@/lib/contacts';
 import { ProposalView } from '@/components/proposal-view';
 import type { Deck } from '@/components/public-deck-view';
 import type { Proposal, SponsorshipModule } from '@/lib/types';
@@ -29,9 +31,12 @@ export default async function ProposalPage({
   // A signed-in Blockworks rep previewing their own work gets a way back to
   // the builder. A sponsor has no cookie, so they never see it — and it isn't
   // in the PDF either, which renders with print=1.
+  const jar = await cookies();
   const isTeam =
-    print !== '1' &&
-    !!readSessionToken((await cookies()).get(BUILDER_COOKIE_NAME)?.value ?? '');
+    print !== '1' && !!readSessionToken(jar.get(BUILDER_COOKIE_NAME)?.value ?? '');
+  // A sponsor who has already given their address at one gate: the session
+  // says which address, and this proposal still has to be addressed to it.
+  const sponsorEmail = readSponsorToken(jar.get(SPONSOR_COOKIE_NAME)?.value ?? '');
 
   const { data: proposal } = await supabase
     .from('proposals')
@@ -40,6 +45,13 @@ export default async function ProposalPage({
     .single();
 
   if (!proposal) notFound();
+
+  // Skips the gate, not the check: the proposal opens only for an address it
+  // was sent to, exactly as typing it would.
+  const unlockedAs =
+    sponsorEmail && isAddressedTo(proposal.contact_email, sponsorEmail)
+      ? sponsorEmail
+      : null;
 
   const { data: links } = await supabase
     .from('proposal_modules')
@@ -121,6 +133,7 @@ export default async function ProposalPage({
         tierTable={tierTable}
         tierTables={(tierTables ?? []) as SponsorshipModule[]}
         skipGate={print === '1'}
+        unlockedAs={unlockedAs}
         autoPrint={autoprint === '1'}
       />
     </>

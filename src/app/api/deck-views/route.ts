@@ -2,6 +2,39 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { emailList, isAddressedTo } from '@/lib/contacts';
 import { notifyOpen } from '@/lib/notify';
+import {
+  SPONSOR_COOKIE_NAME,
+  SPONSOR_MAX_AGE_SECONDS,
+  createSponsorToken,
+} from '@/lib/sponsor-auth';
+
+/**
+ * The other proposals this address was sent — the welcome screen lists them,
+ * so a sponsor with two doesn't need a second link and a second trip through
+ * the gate.
+ *
+ * Addresses live in one text field, several to a proposal, so the query only
+ * narrows the rows (a substring match can catch 'aa@x.com' looking for
+ * 'a@x.com') and isAddressedTo does the exact check.
+ */
+async function othersFor(address: string, exceptId: string) {
+  const { data } = await supabase
+    .from('proposals')
+    .select('slug, company, event, tier, tiers, contact_email, updated_at')
+    .ilike('contact_email', `%${address}%`)
+    .neq('id', exceptId)
+    .order('updated_at', { ascending: false });
+
+  return (data ?? [])
+    .filter((row) => isAddressedTo(row.contact_email as string | null, address))
+    .map((row) => ({
+      slug: row.slug as string,
+      company: row.company as string,
+      event: (row.event as string | null) ?? null,
+      tier: (row.tier as string | null) ?? null,
+      tiers: (row.tiers as Record<string, string> | null) ?? null,
+    }));
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -25,6 +58,10 @@ export async function POST(req: NextRequest) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
     return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
   }
+
+  // Set by the check below: whether this open is a proposal whose address
+  // checked out, which is what earns the viewer a session.
+  let verifiedProposal = false;
 
   // A proposal opens only for the address the rep addressed it to. Checked
   // here rather than in the browser so the answer can't be edited out of the
@@ -54,6 +91,7 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
+    verifiedProposal = true;
   }
 
   const { data, error } = await supabase
@@ -84,5 +122,35 @@ export async function POST(req: NextRequest) {
     // best-effort
   }
 
-  return NextResponse.json({ viewId: data.id });
+  // Nothing below this point may fail the view: it is already logged.
+  if (!verifiedProposal || !proposalId) {
+    return NextResponse.json({ viewId: data.id });
+  }
+
+  let others: Awaited<ReturnType<typeof othersFor>> = [];
+  try {
+    others = await othersFor(address, proposalId);
+  } catch {
+    // The welcome screen simply won't list the others.
+  }
+
+  const res = NextResponse.json({ viewId: data.id, others });
+
+  // The session that saves typing the same address into every one of them. The
+  // gate still decides what opens — this only remembers that it was passed.
+  try {
+    res.cookies.set({
+      name: SPONSOR_COOKIE_NAME,
+      value: createSponsorToken(address),
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: SPONSOR_MAX_AGE_SECONDS,
+    });
+  } catch {
+    // No AUTH_SECRET configured: no session, and the gate works as it did.
+  }
+
+  return res;
 }
