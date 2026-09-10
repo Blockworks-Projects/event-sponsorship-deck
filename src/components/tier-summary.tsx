@@ -144,10 +144,25 @@ export function PriceBreakdown({
     amount: proposal.discount_amount,
   });
 
+  // A discount line the rep set in the checkout, in money — shown as its own
+  // line above the total, with the subtotal it came off. The money is what's
+  // stored because a percentage can't be read back off an already-discounted
+  // figure. It stands whether the deal is a tier, several cities or à la
+  // carte, none of which has a list price to strike through.
+  const explicitOff =
+    proposal.discount_amount && proposal.discount_amount > 0 ? proposal.discount_amount : null;
+  // "(15%)" beside the line, when it was struck as a percentage. A flat sum
+  // needs no label — the figure next to it says it.
+  const percentLabel = proposal.discount_percent ? `${proposal.discount_percent}%` : null;
+
   // Priced per event: show each city's own line and its own reduction, since
   // "Asia discounted, London at full price" is invisible in a single total.
   const lines = proposal.price_lines ?? [];
   const perEvent = lines.length > 1;
+  /** What the one city on a single-city deal is actually charged, as against
+   *  its tier's standard price. Needed only alongside a discount line, where
+   *  the subtotal above the discount has to be the figure the rows add up to. */
+  const singleNet = parsePrice(lines[0]?.net ?? null);
 
   // À la carte: one row per item bought, at the price the rep quoted. There
   // is no list price to strike through — nothing was discounted, the items
@@ -269,11 +284,45 @@ export function PriceBreakdown({
               ))
             : list !== null && (
                 <div className="flex justify-between gap-6 py-3">
-                  <dt className="text-sm text-neutral-700">{proposal.tier} sponsorship</dt>
-                  <dd className="text-sm font-semibold text-neutral-900">{formatPrice(list)}</dd>
+                  <dt className="text-sm text-neutral-700">
+                    {proposal.tier} sponsorship
+                    {/* Under a discount line the row has to show what the
+                        package is charged at, or the subtotal below it won't
+                        add up — the standard price is struck through instead. */}
+                    {explicitOff !== null && singleNet !== null && singleNet < list && (
+                      <span className="ml-2 text-neutral-500 line-through">
+                        {formatPrice(list)}
+                      </span>
+                    )}
+                  </dt>
+                  <dd className="text-sm font-semibold text-neutral-900">
+                    {formatPrice(
+                      explicitOff !== null && singleNet !== null ? singleNet : list
+                    )}
+                  </dd>
                 </div>
               )}
-          {!perEvent && menu.length === 0 && saving !== null && (
+          {explicitOff !== null && (
+            <>
+              <div className="flex justify-between gap-6 py-3">
+                <dt className="text-sm text-neutral-700">Subtotal</dt>
+                <dd className="text-sm font-semibold text-neutral-900">
+                  {formatPrice(final + explicitOff)}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-6 py-3">
+                <dt className="text-sm text-neutral-700">
+                  Discount{percentLabel ? ` (${percentLabel})` : ''}
+                </dt>
+                <dd className="text-sm font-semibold" style={{ color: accent }}>
+                  &minus;{formatPrice(explicitOff)}
+                </dd>
+              </div>
+            </>
+          )}
+          {/* Older proposals carry no discount line of their own: a quote that
+              came in under the tier standard is shown as the reduction. */}
+          {explicitOff === null && !perEvent && menu.length === 0 && saving !== null && (
             <div className="flex justify-between gap-6 py-3">
               <dt className="text-sm text-neutral-700">
                 Discount{discountLabel ? ` (${discountLabel.replace(/ off$/, '')})` : ''}

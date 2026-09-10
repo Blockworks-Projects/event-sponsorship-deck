@@ -157,8 +157,10 @@ export function catalogFor(event: string): CatalogItem[] {
 /**
  * Passes on an à la carte package. A tier bundles them in; an à la carte
  * package has no tier, so the rep sets the counts by hand and they are charged
- * per pass. The labels match the tier tables' own rows so a mixed proposal
- * (one city on a tier, one à la carte) lines them up in the same comparison row.
+ * per pass — unless the rep folds them into the bundle price instead, which
+ * the checkout offers per city. The labels match the tier tables' own rows so
+ * a mixed proposal (one city on a tier, one à la carte) lines them up in the
+ * same comparison row.
  */
 export const TICKET_ITEMS: MenuItem[] = [
   { key: 'ga-tickets', label: 'General Admission' },
@@ -198,9 +200,10 @@ export interface MenuLine {
   /** The item's price, defaulted from the catalogue and overridable by the rep. */
   price?: string | null;
   /**
-   * Included passes rather than a priced item: the count of General Admission
-   * or VIP tickets in the package. Present only on ticket lines, which carry no
-   * price and add nothing to the total.
+   * The count of General Admission or VIP passes in the package, on a pass
+   * line. Charged per pass, in which case the line carries what the count
+   * costs — or bundled into the package price, in which case it carries no
+   * price and adds nothing to the total. The rep picks which in the checkout.
    */
   qty?: number | null;
 }

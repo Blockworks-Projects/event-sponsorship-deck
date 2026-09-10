@@ -196,6 +196,17 @@ export function ProposalForm({
         .map((line) => [menuKey(line.event, line.key), String(line.qty)])
     )
   );
+  // Which pass counts ride along in the bundle price rather than being charged
+  // per pass, keyed the same way. A saved line with a count but no price is a
+  // bundled one — which is also how a proposal quoted before passes were
+  // charged reads, so an old quote keeps its original wording.
+  const [ticketsBundled, setTicketsBundled] = useState<Record<string, boolean>>(
+    Object.fromEntries(
+      (existing?.a_la_carte ?? [])
+        .filter((line) => isTicket(line.key) && line.qty != null && !line.price)
+        .map((line) => [menuKey(line.event, line.key), true])
+    )
+  );
   // A package (tier) city includes one activation; any others the sponsor picks
   // are charged at their à la carte price. This records which picked activation
   // is the included (free) one, per event — defaulting to the first picked.
@@ -268,6 +279,20 @@ export function ProposalForm({
   /** A negotiated grand total the rep can type to override the summed lines. */
   const [grandTotalOverride, setGrandTotalOverride] = useState(
     existing?.total_override ?? ''
+  );
+  /** An optional discount line, taken off the subtotal — a percentage or a
+   *  flat sum, whichever way the deal was struck. Kept apart from the total
+   *  override so the reduction shows as its own line on the proposal instead
+   *  of being absorbed into a quietly lower headline. */
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>(
+    existing?.discount_percent ? 'percent' : 'amount'
+  );
+  const [discountInput, setDiscountInput] = useState(
+    existing?.discount_percent
+      ? String(existing.discount_percent)
+      : existing?.discount_amount
+        ? String(existing.discount_amount)
+        : ''
   );
 
 
@@ -410,9 +435,23 @@ export function ProposalForm({
     return Number.isFinite(qty) && qty > 0 ? qty : null;
   };
 
+  /** Do this city's passes of one kind ride in the bundle price rather than
+   *  being charged per pass? */
+  const ticketBundled = (eventKey: string, ticketKey: string): boolean =>
+    ticketsBundled[menuKey(eventKey, ticketKey)] === true;
+
+  /** Flip one city's passes between charged per pass and in the bundle. */
+  const toggleTicketBundled = (eventKey: string, ticketKey: string) =>
+    setTicketsBundled((current) => ({
+      ...current,
+      [menuKey(eventKey, ticketKey)]: current[menuKey(eventKey, ticketKey)] !== true,
+    }));
+
   /** What a city's passes of one kind cost: the count times the per-pass price.
-   *  Null where the city has no pass pricing — those stay bundled. */
+   *  Null where they're bundled with the package, or where the city has no
+   *  pass pricing at all — either way they add nothing of their own. */
   const ticketCharge = (eventKey: string, ticketKey: string): number | null => {
+    if (ticketBundled(eventKey, ticketKey)) return null;
     const qty = ticketQty(eventKey, ticketKey);
     const each = ticketPrice(eventKey, ticketKey);
     return qty === null || each === null ? null : qty * each;
@@ -559,7 +598,20 @@ export function ProposalForm({
     const value = eventChargeValue(key);
     return value === null ? sum : (sum ?? 0) + value;
   }, null);
-  const effectiveGrandTotal = parsePrice(grandTotalOverride) ?? grandTotalValue;
+  /** What a discount comes off: the rep's negotiated total when they typed
+   *  one, otherwise the summed lines. */
+  const subtotalValue = parsePrice(grandTotalOverride) ?? grandTotalValue;
+  /** The discount line in money. A percentage is read against the subtotal;
+   *  either way it can't take off more than the deal is worth. */
+  const discountValue = (() => {
+    const typed = Number(discountInput);
+    if (!Number.isFinite(typed) || typed <= 0 || subtotalValue === null) return 0;
+    const off = discountMode === 'percent' ? subtotalValue * (typed / 100) : typed;
+    // Rounded to the pound the same way the server rounds it, so the checkout
+    // shows the figure the proposal will actually carry.
+    return Math.min(Math.round(off), subtotalValue);
+  })();
+  const effectiveGrandTotal = subtotalValue === null ? null : subtotalValue - discountValue;
 
   /**
    * Which stage a tier's speaking slot is on at a given event, read off that
@@ -833,6 +885,12 @@ export function ProposalForm({
           }, {}),
           // A negotiated grand total the rep typed, overriding the summed lines.
           totalOverride: grandTotalOverride.trim() || undefined,
+          // The discount line as it was struck — a percentage, or a flat sum
+          // off. The server works out the money and the final total.
+          discountPercent:
+            discountMode === 'percent' && discountValue > 0 ? Number(discountInput) : undefined,
+          discountAmount:
+            discountMode === 'amount' && discountValue > 0 ? Number(discountInput) : undefined,
           aLaCarte: onMenu ? menuLines : undefined,
           logoUrl: logoUrl || undefined,
           introNote: introNote || undefined,
@@ -1360,6 +1418,7 @@ export function ProposalForm({
                                 // Removing a ticket row clears its count too.
                                 if (ticketKey && on) {
                                   setMenuTickets((c) => ({ ...c, [menuKey(key, ticketKey)]: '' }));
+                                  setTicketsBundled((c) => ({ ...c, [menuKey(key, ticketKey)]: false }));
                                 }
                                 toggleOverride(key, 'added', benefit);
                               }}
@@ -1374,7 +1433,7 @@ export function ProposalForm({
                               <span className="text-xs text-neutral-500">{on ? 'Added' : 'Add'}</span>
                             </button>
                             {on && ticketKey && (
-                              <div className="mt-1 flex items-center gap-3 px-3">
+                              <div className="mt-1 flex flex-wrap items-center gap-3 px-3">
                                 <span className="text-sm text-neutral-400">How many?</span>
                                 <Input
                                   value={menuTickets[menuKey(key, ticketKey)] ?? ''}
@@ -1388,17 +1447,35 @@ export function ProposalForm({
                                   inputMode="numeric"
                                   className="w-24"
                                 />
-                                {/* Passes are charged, so the cost is shown as
-                                    the count is typed rather than only in the
-                                    checkout. */}
+                                {/* Passes are either charged per pass or folded
+                                    into the bundle price — the button decides
+                                    which, so a package deal needn't itemise
+                                    them. The cost is shown as the count is
+                                    typed rather than only in the checkout. */}
                                 {ticketPrice(key, ticketKey) !== null && (
-                                  <span className="text-sm text-neutral-500">
-                                    {formatPrice(ticketPrice(key, ticketKey) as number)} each
-                                    {ticketCharge(key, ticketKey) !== null && (
-                                      <> · {formatPrice(ticketCharge(key, ticketKey) as number)}</>
-                                    )}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTicketBundled(key, ticketKey)}
+                                    className="border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:border-neutral-500"
+                                  >
+                                    {ticketBundled(key, ticketKey)
+                                      ? 'Price per pass'
+                                      : 'Bundle with package'}
+                                  </button>
                                 )}
+                                <span className="text-sm text-neutral-500">
+                                  {ticketBundled(key, ticketKey) ||
+                                  ticketPrice(key, ticketKey) === null ? (
+                                    'In the bundle price'
+                                  ) : (
+                                    <>
+                                      {formatPrice(ticketPrice(key, ticketKey) as number)} each
+                                      {ticketCharge(key, ticketKey) !== null && (
+                                        <> · {formatPrice(ticketCharge(key, ticketKey) as number)}</>
+                                      )}
+                                    </>
+                                  )}
+                                </span>
                               </div>
                             )}
                           </li>
@@ -1918,20 +1995,32 @@ export function ProposalForm({
                           <span className="w-40 text-right">In bundle</span>
                         </div>
                       ))}
-                      {/* Passes, charged per pass: the count times the city's
-                          ticket price. Read-only — the count is set on the
-                          Add-ons step, and the price comes from the registry. */}
+                      {/* Passes, either charged per pass (the count times the
+                          city's ticket price) or folded into the bundle above —
+                          the button flips between the two. The count itself is
+                          set on the Add-ons step, and the per-pass price comes
+                          from the registry. */}
                       {TICKET_ITEMS.map((t) => {
                         const n = ticketQty(key, t.key);
                         if (n === null) return null;
                         const each = ticketPrice(key, t.key);
                         const charge = ticketCharge(key, t.key);
+                        const bundled = ticketBundled(key, t.key);
                         return (
                           <div key={t.key} className="flex items-center gap-3 text-sm">
                             <span className="flex-1 text-neutral-300">
                               {t.label}: {n}
-                              {each !== null && (
+                              {each !== null && !bundled && (
                                 <span className="text-neutral-500"> · {formatPrice(each)} each</span>
+                              )}
+                              {each !== null && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleTicketBundled(key, t.key)}
+                                  className="ml-2 text-xs text-neutral-400 underline hover:text-neutral-200"
+                                >
+                                  {bundled ? 'Price per pass' : 'Bundle with package'}
+                                </button>
                               )}
                             </span>
                             {showOriginal && (
@@ -2013,6 +2102,47 @@ export function ProposalForm({
                   className="w-40"
                 />
               </div>
+              {/* An optional discount off the subtotal. Left blank there is no
+                  discount line at all — the total is simply the lines. */}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-sm text-neutral-400">Discount</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDiscountMode((m) => (m === 'percent' ? 'amount' : 'percent'))
+                    }
+                    className="w-8 border border-neutral-700 py-1 text-xs text-neutral-300 hover:border-neutral-500"
+                    aria-label="Take the discount as a percentage or a flat amount"
+                  >
+                    {discountMode === 'percent' ? '%' : '$'}
+                  </button>
+                  <Input
+                    value={discountInput}
+                    onChange={(ev) => setDiscountInput(ev.target.value.replace(/[^\d.]/g, ''))}
+                    placeholder={discountMode === 'percent' ? '10' : '0'}
+                    inputMode="decimal"
+                    className="w-40"
+                  />
+                </div>
+              </div>
+
+              {discountValue > 0 && subtotalValue !== null && (
+                <>
+                  <div className="mt-3 flex justify-between text-sm text-neutral-400">
+                    <span>Subtotal</span>
+                    <span>{formatPrice(subtotalValue)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-sm text-neutral-300">
+                    <span>
+                      Discount
+                      {discountMode === 'percent' ? ` (${Number(discountInput)}%)` : ''}
+                    </span>
+                    <span>&minus;{formatPrice(discountValue)}</span>
+                  </div>
+                </>
+              )}
+
               {effectiveGrandTotal !== null && (
                 <div className="mt-3 flex justify-between text-base font-semibold text-white">
                   <span>Grand total</span>

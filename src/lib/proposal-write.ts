@@ -21,6 +21,8 @@ export interface ProposalInput {
   /** Multi-city: the tier at each, e.g. {london:'Presenting', asia:'Diamond'}. */
   tiers?: Record<string, string>;
   totalOverride?: string;
+  /** A discount line off the subtotal, expressed either way round: a
+   *  percentage, or a flat sum. The money it comes to is worked out here. */
   discountPercent?: number;
   discountAmount?: number;
   /**
@@ -179,13 +181,32 @@ export async function proposalColumns(input: ProposalInput) {
   const combined =
     netTotal === null && menuTotal === null ? null : (netTotal ?? 0) + (menuTotal ?? 0);
   const overrideValue = parsePrice(input.totalOverride ?? '');
-  const quotedValue = overrideValue ?? combined;
+  /** The subtotal a discount line comes off, before any discount. */
+  const subtotalValue = overrideValue ?? combined;
+
+  // The discount line in money, whichever way it was expressed. A percentage
+  // is taken against the subtotal, and neither form can take off more than the
+  // deal is worth — a discount larger than the price is a typo, not a refund.
+  const discountOff = (() => {
+    if (subtotalValue === null) return 0;
+    const percent = input.discountPercent ?? 0;
+    const amount = input.discountAmount ?? 0;
+    const off = percent > 0 ? subtotalValue * (percent / 100) : amount;
+    // Rounded here rather than at display time, so the stored discount and the
+    // stored total still add back up to the subtotal on the proposal page.
+    return off > 0 ? Math.min(Math.round(off), subtotalValue) : 0;
+  })();
+
+  const quotedValue = subtotalValue === null ? null : subtotalValue - discountOff;
   const quoted = quotedValue === null ? null : formatPrice(quotedValue);
 
-  // A genuine reduction below the tier standard shows as a struck-through
-  // discount; the value shown is always the authoritative quote.
+  // A genuine reduction — a discount line the rep set, or a quote that came in
+  // under the tier standard — shows as a struck-through discount; the value
+  // shown is always the authoritative quote.
   const discounted =
-    quotedValue !== null && listTotal !== null && quotedValue < listTotal ? quoted : null;
+    quotedValue !== null && (discountOff > 0 || (listTotal !== null && quotedValue < listTotal))
+      ? quoted
+      : null;
 
   return {
     company: input.company,
@@ -197,7 +218,10 @@ export async function proposalColumns(input: ProposalInput) {
     list_price: listPrice,
     total_override: input.totalOverride?.trim() || null,
     discount_percent: input.discountPercent ?? null,
-    discount_amount: input.discountAmount ?? null,
+    // The money the discount line took off, however it was expressed: the
+    // proposal page needs the figure to show the line, and a percentage alone
+    // can't be read back off an already-discounted total.
+    discount_amount: discountOff > 0 ? discountOff : input.discountAmount ?? null,
     event_discounts: Object.keys(eventDiscounts).length ? eventDiscounts : null,
     // Kept even alongside à la carte items: a proposal can be a tier in one
     // city and items in the other, and the investment table needs both halves.
