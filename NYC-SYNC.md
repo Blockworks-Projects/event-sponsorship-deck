@@ -124,5 +124,7 @@ markers are needed.
 1. Deploy the updated Apps Script (Deploy → Manage deployments → New version).
 2. In `/builder`, click **Sync now**.
 3. Open **New York proposal** — the NYC tiers and activations should now appear.
+   The same rows are what a multi-city proposal (`/builder/new/multi`) reads for
+   its New York column, so that flow stays empty until this lands too.
    If it still says "No tier pricing has synced for New York yet", the
    `action=sync` response isn't yet returning a `region: 'nyc'` tier-table row.
